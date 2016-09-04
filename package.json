@@ -1,0 +1,27 @@
+{
+  "name": "bitclock",
+  "version": "0.1.0-alpha",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elnarddogg/bitclock-node.git"
+  },
+  "author": {
+    "name": "Bernard McManus",
+    "email": "bernard.mcmanus.iv@gmail.com",
+    "url": "http://github.com/elnarddogg"
+  },
+  "engines": {
+    "npm": ">=3",
+    "node": ">=6"
+  },
+  "engineStrict": true,
+  "scripts": {
+    "test": "echo \"FIXME: add unit tests\\n\" && exit 0"
+  },
+  "dependencies": {
+    "bluebird": "^3.4.6",
+    "isomorphic-fetch": "^2.2.1",
+    "lodash": "^4.16.4"
+  }
+}
