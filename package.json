@@ -1,6 +1,6 @@
 {
   "name": "bitclock",
-  "version": "0.1.0-alpha",
+  "version": "0.1.0-alpha.1",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -15,7 +15,7 @@
     "npm": ">=3",
     "node": ">=6"
   },
-  "engineStrict": true,
+  "engine-strict": true,
   "scripts": {
     "test": "echo \"FIXME: add unit tests\\n\" && exit 0"
   },
