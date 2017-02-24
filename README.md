@@ -1,3 +1,3 @@
-# bitclock-node [![travis-ci](https://travis-ci.org/bernardmcmanus/bitclock-node.svg)](https://travis-ci.org/bernardmcmanus/bitclock-node)
+# bitclock-js [![travis-ci](https://travis-ci.org/BitClock/bitclock-js.svg)](https://travis-ci.org/BitClock/bitclock-js)
 
-> BitClock client for Node.js
+> BitClock universal JavaScript client
