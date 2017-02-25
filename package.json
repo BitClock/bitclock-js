@@ -16,7 +16,7 @@
   },
   "main": "build",
   "scripts": {
-    "build": "babel lib --out-dir build --ignore test.js && npm run build:webpack",
+    "build": "babel lib --out-dir build && npm run build:webpack",
     "build:clean": "rimraf ./build/*",
     "build:webpack": "webpack",
     "lint": "eslint . --color --ignore-path .gitignore",
