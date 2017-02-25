@@ -4,14 +4,27 @@ import fetch from 'isomorphic-fetch';
 import Bluebird from 'bluebird';
 import chai, { expect } from 'chai';
 import sinonChai from 'sinon-chai';
+import intercept from 'intercept-stdout';
 
 import { start, stop } from './server';
 import { config, report, tic, toc } from '../lib/index';
 import Stack from '../lib/stack';
 
+chai.use(sinonChai);
+
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
 
-chai.use(sinonChai);
+let unhook = _.noop;
+
+before(() => {
+	unhook = intercept((txt) => {
+		if (/(^|\W)(error|warning):(\W|$)/i.test(txt)) {
+			throw new Error(txt);
+		}
+	});
+});
+
+after(() => unhook());
 
 describe('bitclock', () => {
 	describe('config', () => {
@@ -29,18 +42,18 @@ describe('bitclock', () => {
 	});
 
 	describe('tic', () => {
-		it('should throw an error if label is falsy', () => {
-			expect(() => tic()).to.throw(ReferenceError);
-			expect(() => tic('')).to.throw(ReferenceError);
-			expect(() => tic(0)).to.throw(ReferenceError);
-			expect(() => tic(null)).to.throw(ReferenceError);
-			expect(() => tic(false)).to.throw(ReferenceError);
+		it('log a warning if label is falsy', () => {
+			expect(() => tic()).to.throw(/warning/i);
+			expect(() => tic('')).to.throw(/warning/i);
+			expect(() => tic(0)).to.throw(/warning/i);
+			expect(() => tic(null)).to.throw(/warning/i);
+			expect(() => tic(false)).to.throw(/warning/i);
 		});
 
-		it('should throw an error if label is not a string', () => {
-			expect(() => tic(1)).to.throw(TypeError);
-			expect(() => tic({})).to.throw(TypeError);
-			expect(() => tic(true)).to.throw(TypeError);
+		it('log a warning if label is not a string', () => {
+			expect(() => tic(1)).to.throw(/warning/i);
+			expect(() => tic({})).to.throw(/warning/i);
+			expect(() => tic(true)).to.throw(/warning/i);
 		});
 	});
 
@@ -57,6 +70,10 @@ describe('bitclock', () => {
 		after(() => {
 			config(tmp);
 			return stop();
+		});
+
+		it('should log a warning if the label does not exist', () => {
+			expect(() => toc('invalid')).to.throw(/warning/i);
 		});
 
 		it('should enqueue an event created with tic', () => {
@@ -94,6 +111,14 @@ describe('bitclock', () => {
 		after(() => {
 			config(tmp);
 			return stop();
+		});
+
+		it('should not block promise chains when the server fails to respond', () => {
+			const tStart = Date.now();
+			return Bluebird
+				.resolve(report({ message: 'timeout' }))
+				.then(() => expect(Date.now() - tStart).to.be.at.most(100))
+				.delay(1000);
 		});
 
 		it('should enqueue and send events in series', () => {
