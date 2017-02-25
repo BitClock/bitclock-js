@@ -5,6 +5,7 @@ import Bluebird from 'bluebird';
 import chai, { expect } from 'chai';
 import sinonChai from 'sinon-chai';
 import intercept from 'intercept-stdout';
+import stripAnsi from 'strip-ansi';
 
 import { start, stop } from './server';
 import { config, report, tic, toc } from '../lib/index';
@@ -18,13 +19,15 @@ let unhook = _.noop;
 
 before(() => {
 	unhook = intercept((txt) => {
-		if (/(^|\W)(error|warning):(\W|$)/i.test(txt)) {
+		if (/(^|\W)(error|warning):(\W|$)/i.test(stripAnsi(txt))) {
 			throw new Error(txt);
 		}
 	});
 });
 
 after(() => unhook());
+
+config({ debug: true });
 
 describe('bitclock', () => {
 	describe('config', () => {
