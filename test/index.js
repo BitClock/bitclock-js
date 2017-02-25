@@ -27,8 +27,6 @@ before(() => {
 
 after(() => unhook());
 
-config({ debug: true });
-
 describe('bitclock', () => {
 	describe('config', () => {
 		it('should set config values', () => {
@@ -89,7 +87,7 @@ describe('bitclock', () => {
 
 			return Bluebird
 				.all(tests)
-				.delay(reportingInterval)
+				.delay(reportingInterval + 50)
 				.then(() => fetch(`${reportingEndpoint}/events`))
 				.then(res => res.json())
 				.then((events) => {
@@ -129,12 +127,12 @@ describe('bitclock', () => {
 			const event2 = { message: 'event2' };
 			return Bluebird
 				.resolve(report(event1))
-				.delay(reportingInterval)
+				.delay(reportingInterval + 50)
 				.then(() => fetch(`${reportingEndpoint}/events`))
 				.then(res => res.json())
 				.then(([event]) => expect(event).to.eql(event1))
 				.then(() => report(event2))
-				.delay(reportingInterval)
+				.delay(reportingInterval + 50)
 				.then(() => fetch(`${reportingEndpoint}/events`))
 				.then(res => res.json())
 				.then(([event]) => expect(event).to.eql(event2));
