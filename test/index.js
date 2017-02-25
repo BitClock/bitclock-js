@@ -92,7 +92,7 @@ describe('bitclock', () => {
 				.then((events) => {
 					expect(events).to.have.length.gte(tests.length);
 					events.forEach((event) => {
-						expect(event.elapsed).to.be.within(1, reportingInterval);
+						expect(event.elapsed).to.be.within(1, reportingInterval + 50);
 					});
 				});
 		});
