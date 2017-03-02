@@ -1,6 +1,6 @@
 {
   "name": "bitclock",
-  "version": "0.1.0-beta.5",
+  "version": "0.1.0-beta.6",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -9,8 +9,9 @@
   "author": {
     "name": "Bernard McManus",
     "email": "bernard.mcmanus.iv@gmail.com",
-    "url": "http://github.com/BitClock"
+    "url": "https://github.com/BitClock"
   },
+  "homepage": "https://bitclock.io",
   "engines": {
     "node": ">=4"
   },
