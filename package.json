@@ -1,6 +1,6 @@
 {
   "name": "bitclock",
-  "version": "0.1.0-beta.7",
+  "version": "0.1.0-beta.8",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -19,7 +19,7 @@
   "scripts": {
     "build": "npm run build:babel && npm run build:webpack",
     "build:babel": "babel lib --out-dir build",
-    "build:clean": "rimraf ./build/*",
+    "build:clean": "rimraf ./build",
     "build:webpack": "webpack",
     "lint": "eslint . --color --ignore-path .gitignore",
     "lint:staged": "lint-staged",
@@ -63,6 +63,7 @@
     "pre-commit": "^1.1.3",
     "rimraf": "^2.6.0",
     "strip-ansi": "^3.0.1",
+    "validator": "^7.0.0",
     "webpack": "^2.2.1"
   }
 }

@@ -4,6 +4,7 @@ import Bluebird from 'bluebird';
 import { expect } from 'chai';
 import intercept from 'intercept-stdout';
 import stripAnsi from 'strip-ansi';
+import { isUUID, isISO8601 } from 'validator';
 
 import { start, stop } from './server';
 import { config, Transaction } from '../lib/index';
@@ -40,7 +41,7 @@ describe('bitclock', () => {
 
 	describe('Transaction', () => {
 		const tmp = config();
-		const reportingInterval = 200;
+		const reportingInterval = 500;
 		const reportingEndpoint = 'http://localhost:3000';
 		let transaction;
 
@@ -77,6 +78,39 @@ describe('bitclock', () => {
 		describe('toc', () => {
 			it('should log a warning if the label does not exist', () => {
 				expect(() => transaction.toc('invalid')).to.throw(/warning/i);
+			});
+
+			it('should safely handle invalid json', () => {
+				const circular = {
+					ok: true,
+					get circular() {
+						return circular;
+					}
+				};
+
+				const malformed = {
+					ok: true,
+					fn: function() {},
+					symbol: Symbol('symbol'),
+					proxy: new Proxy({}, {})
+				};
+
+				expect(() => JSON.stringify(circular)).to.throw(/circular/i);
+
+				transaction.tic('invalid', circular);
+				transaction.toc('invalid', malformed);
+
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`))
+					.then(res => res.json())
+					.then(([event]) => {
+						expect(event.ok).to.equal(true);
+						expect(event.proxy).to.deep.equal({});
+						expect(event.circular).to.deep.equal(_.omit(circular, 'circular'));
+						expect(isISO8601(event.timestamp)).to.be.ok;
+						expect(isUUID(event.transactionId)).to.be.ok;
+					});
 			});
 
 			it('should enqueue an event created with tic', () => {
