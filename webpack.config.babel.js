@@ -1,5 +1,5 @@
 import path from 'path';
-import { BannerPlugin, optimize } from 'webpack';
+import { BannerPlugin, ProvidePlugin, optimize } from 'webpack';
 
 import pkg from './package.json';
 
@@ -30,6 +30,7 @@ export default {
 	},
 	plugins: [
 		new BannerPlugin({ banner, entryOnly: true }),
+		new ProvidePlugin({ Promise: 'wee-promise' }),
 		new optimize.UglifyJsPlugin({
 			compress: { warnings: false }
 		})

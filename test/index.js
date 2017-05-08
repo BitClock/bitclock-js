@@ -1,4 +1,5 @@
 import _ from 'lodash';
+import uuid from 'uuid';
 import fetch from 'isomorphic-fetch';
 import Bluebird from 'bluebird';
 import { expect } from 'chai';
@@ -8,6 +9,7 @@ import { isUUID, isISO8601 } from 'validator';
 
 import { start, stop } from './server';
 import { config, Transaction } from '../lib/index';
+import { getToken } from '../lib/helpers';
 import Stack from '../lib/stack';
 
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
@@ -179,6 +181,46 @@ describe('bitclock', () => {
 					.then(res => res.json())
 					.then(([event]) => expect(event).to.include({ ...event2, ...common }));
 			});
+		});
+	});
+});
+
+describe('Helpers', () => {
+	describe('getToken', () => {
+		const { document } = global;
+		const configToken = config().token;
+		const envToken = process.env.BITCLOCK_TOKEN;
+		const cookieString = document.cookie;
+		let testToken;
+		let testCookieString;
+
+		beforeEach(() => {
+			testToken = uuid.v4();
+			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
+		});
+
+		afterEach(() => {
+			config({ token: configToken });
+			process.env.BITCLOCK_TOKEN = envToken;
+			document.cookie = cookieString;
+		});
+
+		it('should get the token from config', () => {
+			config({ token: testToken });
+			expect(getToken()).to.equal(testToken);
+		});
+
+		it('should get the token from process.env', () => {
+			config({ token: undefined });
+			process.env.BITCLOCK_TOKEN = testToken;
+			expect(getToken()).to.equal(testToken);
+		});
+
+		it('should get the token from document.cookie', () => {
+			config({ token: undefined });
+			process.env.BITCLOCK_TOKEN = undefined;
+			document.cookie = testCookieString;
+			expect(getToken()).to.equal(testToken);
 		});
 	});
 });
