@@ -9,7 +9,6 @@ import { isUUID, isISO8601 } from 'validator';
 
 import { start, stop } from './server';
 import { config, Transaction } from '../lib/index';
-import { getToken } from '../lib/helpers';
 import Stack from '../lib/stack';
 
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
@@ -62,7 +61,7 @@ describe('bitclock', () => {
 		});
 
 		describe('tic', () => {
-			it('log a warning if label is falsy', () => {
+			it('log a warning if dimensions is falsy', () => {
 				expect(() => transaction.tic()).to.throw(/warning/i);
 				expect(() => transaction.tic('')).to.throw(/warning/i);
 				expect(() => transaction.tic(0)).to.throw(/warning/i);
@@ -70,15 +69,18 @@ describe('bitclock', () => {
 				expect(() => transaction.tic(false)).to.throw(/warning/i);
 			});
 
-			it('log a warning if label is not a string', () => {
+			it('log a warning if dimensions is not a string or plain object', () => {
 				expect(() => transaction.tic(1)).to.throw(/warning/i);
-				expect(() => transaction.tic({})).to.throw(/warning/i);
 				expect(() => transaction.tic(true)).to.throw(/warning/i);
+				expect(() => transaction.tic([])).to.throw(/warning/i);
+				expect(() => transaction.tic({ nested: {} })).to.throw(/warning/i);
+				expect(() => transaction.tic('test')).to.not.throw(/warning/i);
+				expect(() => transaction.tic({})).to.not.throw(/warning/i);
 			});
 		});
 
 		describe('toc', () => {
-			it('should log a warning if the label does not exist', () => {
+			it('should log a warning if the dimensions does not exist', () => {
 				expect(() => transaction.toc('invalid')).to.throw(/warning/i);
 			});
 
@@ -194,7 +196,12 @@ describe('Helpers', () => {
 		let testToken;
 		let testCookieString;
 
+		// getToken is memoized so we need a fresh require for each test 
+		let getToken;
+
 		beforeEach(() => {
+			delete require.cache[require.resolve('../lib/helpers')];
+			({ getToken } = require('../lib/helpers'));
 			testToken = uuid.v4();
 			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
 		});
