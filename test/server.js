@@ -23,12 +23,12 @@ app.use('/:v/bucket/:id/event', (req, res, next) => {
 	const { authorization } = req.headers;
 	if (authorization.indexOf(process.env.BITCLOCK_TOKEN) === -1) {
 		next(new Error('missing token'));
-	} else if (_.get(body, [0, 'message']) === 'timeout') {
+	} else if (_.get(body, ['events', 0, 'type']) === 'timeout') {
 		// do nothing and let the request timeout
 	} else {
-		const array = Array.isArray(body) ? body : [body];
-		events.push(...array);
-		res.json({ success: true });
+		const { events: chunk } = body;
+		events.push(...chunk);
+		res.json({ chunk, total: events.length });
 	}
 });
 
@@ -37,9 +37,9 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 	res.json({ err });
 });
 
-export function start() {
+export function start(port = 3000) {
 	return Bluebird
-		.fromCallback(cb => server.listen(3000, cb));
+		.fromCallback(cb => server.listen(port, cb));
 }
 
 export function stop() {
