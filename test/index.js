@@ -5,11 +5,11 @@ import Bluebird from 'bluebird';
 import { expect } from 'chai';
 import intercept from 'intercept-stdout';
 import stripAnsi from 'strip-ansi';
+import { parse as parseUrl } from 'url';
 import { isUUID, isISO8601 } from 'validator';
 
 import { start, stop } from './server';
 import { config, Transaction } from '../lib/index';
-import { getToken } from '../lib/helpers';
 import Stack from '../lib/stack';
 
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
@@ -39,6 +39,13 @@ describe('bitclock', () => {
 			expect(() => config({ reportingInterval: 1 })).to.throw(Error);
 			expect(() => config({ reportingInterval: 300.5 })).to.throw(Error);
 		});
+
+		it('should throw an error given an invalid maxChunkSize', () => {
+			expect(() => config({ maxChunkSize: null })).to.throw(Error);
+			expect(() => config({ maxChunkSize: 0 })).to.throw(Error);
+			expect(() => config({ maxChunkSize: 10.5 })).to.throw(Error);
+			expect(() => config({ maxChunkSize: 3000 })).to.throw(Error);
+		});
 	});
 
 	describe('Transaction', () => {
@@ -49,7 +56,7 @@ describe('bitclock', () => {
 
 		before(() => {
 			config({ reportingInterval, reportingEndpoint });
-			return start();
+			return start(parseUrl(reportingEndpoint).port);
 		});
 
 		after(() => {
@@ -62,65 +69,53 @@ describe('bitclock', () => {
 		});
 
 		describe('tic', () => {
-			it('log a warning if label is falsy', () => {
-				expect(() => transaction.tic()).to.throw(/warning/i);
-				expect(() => transaction.tic('')).to.throw(/warning/i);
-				expect(() => transaction.tic(0)).to.throw(/warning/i);
-				expect(() => transaction.tic(null)).to.throw(/warning/i);
-				expect(() => transaction.tic(false)).to.throw(/warning/i);
-			});
-
-			it('log a warning if label is not a string', () => {
-				expect(() => transaction.tic(1)).to.throw(/warning/i);
-				expect(() => transaction.tic({})).to.throw(/warning/i);
-				expect(() => transaction.tic(true)).to.throw(/warning/i);
+			it('should return a toc function', () => {
+				expect(() => transaction.tic()).to.be.a.function;
 			});
 		});
 
 		describe('toc', () => {
-			it('should log a warning if the label does not exist', () => {
-				expect(() => transaction.toc('invalid')).to.throw(/warning/i);
-			});
-
 			it('should safely handle invalid json', () => {
-				const circular = {
-					ok: true,
-					get circular() {
-						return circular;
-					}
-				};
-
 				const malformed = {
-					ok: true,
+					bool: true,
 					fn: function() {},
 					symbol: Symbol('symbol'),
 					proxy: new Proxy({}, {})
 				};
 
+				const circular = {
+					bool: false,
+					get circular() {
+						return circular;
+					}
+				};
+
 				expect(() => JSON.stringify(circular)).to.throw(/circular/i);
 
-				transaction.tic('invalid', circular);
-				transaction.toc('invalid', malformed);
+				transaction
+					.data(malformed)
+					.data(circular)
+					.tic({ test: true })(null);
 
 				return Bluebird
 					.delay(reportingInterval + 50)
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
-					.then(([event]) => {
-						expect(event.ok).to.equal(true);
-						expect(event.proxy).to.deep.equal({});
-						expect(event.circular).to.deep.equal(_.omit(circular, 'circular'));
-						expect(isISO8601(event.timestamp)).to.be.ok;
-						expect(isUUID(event.transactionId)).to.be.ok;
+					.then(([{ transactionId, timestamp, data }]) => {
+						expect(data.bool).to.equal(false);
+						expect(data.proxy).to.deep.equal({});
+						expect(data).to.include(_.omit(circular, 'circular'));
+						expect(isISO8601(timestamp)).to.be.ok;
+						expect(isUUID(transactionId)).to.be.ok;
 					});
 			});
 
 			it('should enqueue an event created with tic', () => {
 				const tests = _.map([1, 2, 3], (n) => {
 					return Bluebird
-						.resolve(transaction.tic(`test${n}`))
+						.resolve(transaction.tic({ test: n }))
 						.delay(_.random(1, reportingInterval))
-						.then(() => transaction.toc(`test${n}`));
+						.then(toc => toc());
 				});
 
 				return Bluebird
@@ -129,57 +124,110 @@ describe('bitclock', () => {
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
 					.then((events) => {
-						expect(events).to.have.length.gte(tests.length);
+						expect(events).to.have.length(tests.length);
 						events.forEach((event) => {
-							expect(event.elapsed).to.be.within(1, reportingInterval + 50);
+							expect(event.value).to.be.within(1, reportingInterval + 50);
 						});
 					});
 			});
 		});
 
-		describe('report', () => {
+		describe('count', () => {
+			it('should count occurrences of an event', () => {
+				const expectedSize = [1, 2, 3].map(n => transaction.count({ test: n })).length;
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`))
+					.then(res => res.json())
+					.then((events) => {
+						expect(events).to.have.length(expectedSize);
+						events.forEach((event) => {
+							expect(event.value).to.be.equal(1);
+						});
+					});
+			});
+		});
+
+		describe('dispatch', () => {
+			it('should log a warning if dimensions is falsy', () => {
+				const args = ['type', 'value'];
+				expect(() => transaction.dispatch(...args)).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, '')).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, 0)).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, null)).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, false)).to.throw(/warning/i);
+			});
+
+			it('should log a warning if dimensions is not a plain object', () => {
+				const args = ['type', 'value'];
+				expect(() => transaction.dispatch(...args, 1)).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, true)).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, [])).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, {})).to.throw(/warning/i);
+				expect(() => transaction.dispatch(...args, { nested: {} })).to.throw(/warning/i);
+				transaction.dispatch(...args, { test: true });
+				// clear the valid event from the server queue
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`))
+					.then(res => res.json());
+			});
+
 			it('should not block promise chains when the server fails to respond', () => {
 				const tStart = Date.now();
 				return Bluebird
-					.resolve(transaction.report({ message: 'timeout' }))
+					.resolve(transaction.dispatch('timeout', null, { test: true }))
 					.then(() => expect(Date.now() - tStart).to.be.at.most(100))
 					.delay(1000);
 			});
 
 			it('should enqueue and send events in series', () => {
-				const event1 = { message: 'event1' };
-				const event2 = { message: 'event2' };
+				const args1 = ['type1', 'value1', { test: true }];
+				const args2 = ['type2', 'value2', { test: true }];
 				return Bluebird
-					.resolve(transaction.report(event1))
+					.resolve(transaction.dispatch(...args1))
 					.delay(reportingInterval + 50)
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
-					.then(([event]) => expect(event).to.include(event1))
-					.then(() => transaction.report(event2))
+					.then(([event]) => {
+						expect(event).to.have.property('type', args1[0]);
+						expect(event).to.have.property('value', args1[1]);
+						expect(event.dimensions).to.deep.equal(args1[2]);
+					})
+					.then(() => transaction.dispatch(...args2))
 					.delay(reportingInterval + 50)
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
-					.then(([event]) => expect(event).to.include(event2));
+					.then(([event]) => {
+						expect(event).to.have.property('type', args2[0]);
+						expect(event).to.have.property('value', args2[1]);
+						expect(event.dimensions).to.deep.equal(args2[2]);
+					});
 			});
 		});
 
-		describe('all', () => {
-			it('should merge common data with all events in transaction', () => {
+		describe('data', () => {
+			it('should merge common data with all subsequent events in transaction', () => {
 				const common = { isCommon: true };
-				const event1 = { message: 'event1' };
-				const event2 = { message: 'event2' };
-				transaction.all(common);
+				const extra = { isExtra: true };
+				const args1 = ['type1', 'value1', { test: true }];
+				const args2 = ['type2', 'value2', { test: true }];
+				transaction.data(common);
 				return Bluebird
-					.resolve(transaction.report(event1))
+					.resolve(transaction.dispatch(...args1))
 					.delay(reportingInterval + 50)
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
-					.then(([event]) => expect(event).to.include({ ...event1, ...common }))
-					.then(() => transaction.report(event2))
+					.then(([event]) => {
+						expect(event.data).to.include(common);
+						expect(event.data).to.not.include(extra);
+					})
+					.then(() => transaction.data(extra))
+					.then(() => transaction.dispatch(...args2))
 					.delay(reportingInterval + 50)
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
-					.then(([event]) => expect(event).to.include({ ...event2, ...common }));
+					.then(([event]) => expect(event.data).to.include({ ...common, ...extra }));
 			});
 		});
 	});
@@ -194,7 +242,12 @@ describe('Helpers', () => {
 		let testToken;
 		let testCookieString;
 
+		// getToken is memoized so we need a fresh require for each test 
+		let getToken;
+
 		beforeEach(() => {
+			delete require.cache[require.resolve('../lib/helpers')];
+			({ getToken } = require('../lib/helpers'));
 			testToken = uuid.v4();
 			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
 		});
@@ -238,22 +291,36 @@ describe('Stack', () => {
 		stack.put(array);
 		stack.put(fnObject);
 		stack.put(fnArray);
-		expect(stack.flush()).to.eql(expected);
-		expect(stack.flush()).to.have.length(0);
+		expect(stack.flush(null)).to.eql(expected);
+		expect(stack.flush(null)).to.have.length(0);
 	});
 
 	it('should honor maxChunkSize', () => {
 		const chunkSize = 10;
 		const stack = Stack();
-		const input = _.range(1, 15);
+		const input = _.range(0, chunkSize * 2);
 
 		input.forEach(n => stack.put(n));
-		expect(stack.flush()).to.have.length(input.length);
-		expect(stack.flush()).to.have.length(0);
+		expect(stack.flush(null)).to.have.length(input.length);
+		expect(stack.flush(null)).to.have.length(0);
 
 		input.forEach(n => stack.put(n));
 		expect(stack.flush(chunkSize)).to.have.length(chunkSize);
 		expect(stack.flush(chunkSize)).to.have.length(input.length - chunkSize);
-		expect(stack.flush()).to.have.length(0);
+		expect(stack.flush(chunkSize)).to.have.length(0);
+	});
+
+	it('should account for length of result when limiting maxChunkSize', () => {
+		const chunkSize = 10;
+		const stack = Stack();
+		const input = _.range(0, chunkSize).map(() => _.range(0, chunkSize));
+
+		input.forEach(n => stack.put(n));
+
+		for (let i = 0; i < chunkSize; i++) {
+			expect(stack.flush(chunkSize)).to.have.length(chunkSize);
+		}
+
+		expect(stack.flush(chunkSize)).to.have.length(0);
 	});
 });
