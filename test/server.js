@@ -37,12 +37,12 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 	res.json({ err });
 });
 
-export function start(port = 3000) {
+export function startServer(port = 3000) {
 	return Bluebird
 		.fromCallback(cb => server.listen(port, cb));
 }
 
-export function stop() {
+export function stopServer() {
 	events.length = 0;
 	server.close();
 }
