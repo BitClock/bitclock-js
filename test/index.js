@@ -8,8 +8,8 @@ import stripAnsi from 'strip-ansi';
 import { parse as parseUrl } from 'url';
 import { isUUID, isISO8601 } from 'validator';
 
-import { start, stop } from './server';
-import { config, Transaction } from '../lib/index';
+import { startServer, stopServer } from './server';
+import { config, Transaction, Waterfall } from '../lib/index';
 import Stack from '../lib/stack';
 
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
@@ -56,12 +56,12 @@ describe('bitclock', () => {
 
 		before(() => {
 			config({ reportingInterval, reportingEndpoint });
-			return start(parseUrl(reportingEndpoint).port);
+			return startServer(parseUrl(reportingEndpoint).port);
 		});
 
 		after(() => {
 			config(tmp);
-			return stop();
+			return stopServer();
 		});
 
 		beforeEach(() => {
@@ -231,6 +231,125 @@ describe('bitclock', () => {
 			});
 		});
 	});
+
+	describe('Waterfall', () => {
+		const tmp = config();
+		const reportingInterval = 500;
+		const reportingEndpoint = 'http://localhost:3000';
+		const delayRange = [100, 300];
+		const elements = [
+			{ name: 'element.js', type: 'script' },
+			{ name: 'element.css', type: 'style' },
+			{ name: 'element.png', type: 'image' },
+			{ name: 'load' },
+			{ name: 'element.json', type: 'xhr' },
+		];
+		let waterfall;
+
+		before(() => {
+			config({ reportingInterval, reportingEndpoint });
+			return startServer(parseUrl(reportingEndpoint).port);
+		});
+
+		after(() => {
+			config(tmp);
+			return stopServer();
+		});
+
+		beforeEach(() => {
+			waterfall = Waterfall({ url: '/some/page' });
+		});
+
+		describe('point', () => {
+			it('should enqueue a non-deferred waterfall element', () => {
+				const initDelay = _.random(50, 100);
+				const pointElements = _.filter(elements, ({ type }) => !type);
+				return Bluebird
+					.delay(initDelay)
+					.then(() => {
+						pointElements.forEach(waterfall.point);
+						waterfall.elements.forEach((element, i) => {
+							expect(element).to.not.have.property('elapsed');
+							expect(element.offset).to.be.within(initDelay, initDelay * 2);
+							expect(element).to.include(pointElements[i]);
+						});
+					});
+			});
+		});
+
+		describe('span', () => {
+			it('should enqueue a deferred waterfall element', () => {
+				const status = 200;
+				const initDelayRange = [50, 100];
+				const spanElements = _.reject(elements, ({ type }) => !type);
+				let offsetSum = 0;
+				return Bluebird
+					.mapSeries(spanElements, (spanElement) => {
+						const initDelay = _.random(...initDelayRange);
+						return Bluebird
+							.delay(initDelay)
+							.then(() => waterfall.span(spanElement))
+							.tap(() => {
+								const element = _.last(waterfall.elements);
+								expect(element).to.include(spanElement);
+								expect(element.offset).to.be.within(initDelay, initDelay * 2 + offsetSum);
+								offsetSum += element.offset;
+							});
+					})
+					.map(fn => (
+						Bluebird
+							.delay(_.random(...delayRange))
+							.then(() => fn({ status }))
+					))
+					.then(() => (
+						waterfall.elements.forEach((element, i) => {
+							expect(element).to.include({ ...spanElements[i], status });
+							expect(element.elapsed).to.be.within(delayRange[0], delayRange[1] * 2);
+						})
+					));
+			});
+		});
+
+		describe('commit', () => {
+			it('should dispatch a waterfall event', () => {
+				const status = 200;
+				const initDelayRange = [50, 100];
+				return Bluebird
+					.mapSeries(elements, element => (
+						Bluebird
+							.delay(_.random(...initDelayRange))
+							.then(() => (
+								element.type
+									? waterfall.span(element)
+									: (waterfall.point(element) && _.noop)
+							))
+					))
+					.map(fn => (
+						Bluebird
+							.delay(_.random(...delayRange))
+							.then(() => fn({ status }))
+					))
+					.then(() => waterfall.commit())
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`))
+					.then(res => res.json())
+					.then(([event]) => {
+						expect(event).to.have.property('type', 'waterfall');
+						expect(event.value).to.have.length(elements.length);
+						let lastOffset = 0;
+						event.value.forEach((element, i) => {
+							if (element.type) {
+								expect(element).to.include({ ...elements[i], status });
+							} else {
+								expect(element).to.include(elements[i]);
+							}
+							expect(element.offset).to.be.at.least(lastOffset);
+							lastOffset = element.offset;
+						});
+					});
+			});
+		});
+	});
 });
 
 describe('Helpers', () => {
@@ -242,7 +361,7 @@ describe('Helpers', () => {
 		let testToken;
 		let testCookieString;
 
-		// getToken is memoized so we need a fresh require for each test 
+		// getToken is memoized so we need a fresh require for each test
 		let getToken;
 
 		beforeEach(() => {

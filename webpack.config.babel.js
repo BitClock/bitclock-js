@@ -1,5 +1,11 @@
 import { resolve as resolvePath } from 'path';
-import { optimize, BannerPlugin, NormalModuleReplacementPlugin, ProvidePlugin } from 'webpack';
+import {
+	optimize,
+	BannerPlugin,
+	DefinePlugin,
+	NormalModuleReplacementPlugin,
+	ProvidePlugin
+} from 'webpack';
 
 import pkg from './package.json';
 
@@ -30,6 +36,7 @@ export default {
 		}]
 	},
 	plugins: [
+		new DefinePlugin({ process: { browser: true } }),
 		new ProvidePlugin({ Promise: 'wee-promise' }),
 		new NormalModuleReplacementPlugin(/package\.json/i, (resource) => {
 			resource.request = '../build/package.json';
