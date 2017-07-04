@@ -1,7 +1,8 @@
 node_modules
 npm-debug.log
-build
+dist
 coverage
+.nyc_output
 
 # OS generated files #
 ######################

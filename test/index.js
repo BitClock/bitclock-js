@@ -10,6 +10,7 @@ import { isUUID, isISO8601 } from 'validator';
 
 import { startServer, stopServer } from './server';
 import { config, Transaction, Waterfall } from '../lib/index';
+import { MockWeakSet } from '../lib/weak-set';
 import Stack from '../lib/stack';
 
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
@@ -68,6 +69,25 @@ describe('bitclock', () => {
 			transaction = Transaction();
 		});
 
+		describe('constructor', () => {
+			it('should allow shared dimensions to be passed in initialData', () => {
+				const sharedDims = { foo: 'bar' };
+				const otherDims = [{ bar: 'baz' }, { 'bing': 'bong' }, {}];
+				const t = Transaction({ dimensions: sharedDims });
+				const expectedSize = otherDims.map(obj => t.dispatch('test', null, obj)).length;
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`))
+					.then(res => res.json())
+					.then((events) => {
+						expect(events).to.have.length(expectedSize);
+						events.forEach((event, i) => {
+							expect(event.dimensions).to.deep.equal({ ...sharedDims, ...otherDims[i] });
+						});
+					});
+			});
+		});
+
 		describe('tic', () => {
 			it('should return a toc function', () => {
 				expect(() => transaction.tic()).to.be.a.function;
@@ -75,6 +95,20 @@ describe('bitclock', () => {
 		});
 
 		describe('toc', () => {
+			it('should work when no dimensions are passed to tic', () => {
+				expect(transaction.tic()({ dims: 'test' })).to.equal(transaction);
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`));
+			});
+
+			it('should work when no dimensions are passed to toc', () => {
+				expect(transaction.tic({ dims: 'test' })()).to.equal(transaction);
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`));
+			});
+
 			it('should safely handle invalid json', () => {
 				const malformed = {
 					bool: true,
@@ -101,10 +135,10 @@ describe('bitclock', () => {
 					.delay(reportingInterval + 50)
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
-					.then(([{ transactionId, timestamp, data }]) => {
-						expect(data.bool).to.equal(false);
-						expect(data.proxy).to.deep.equal({});
-						expect(data).to.include(_.omit(circular, 'circular'));
+					.then(([{ transactionId, timestamp, ...other }]) => {
+						expect(other.bool).to.equal(false);
+						expect(other.proxy).to.deep.equal({});
+						expect(other).to.include(_.omit(circular, 'circular'));
 						expect(isISO8601(timestamp)).to.be.ok;
 						expect(isUUID(transactionId)).to.be.ok;
 					});
@@ -142,7 +176,54 @@ describe('bitclock', () => {
 					.then((events) => {
 						expect(events).to.have.length(expectedSize);
 						events.forEach((event) => {
-							expect(event.value).to.be.equal(1);
+							expect(event.value).to.equal(1);
+						});
+					});
+			});
+		});
+
+		describe('dimensions', () => {
+			it('should add dimensions shared by all transaction events', () => {
+				const sharedDims = { foo: 'bar' };
+				const otherDims = [{ bar: 'baz' }, { 'bing': 'bong' }, {}];
+				const t = Transaction().dims(sharedDims);
+				const expectedSize = otherDims.map(obj => t.dispatch('test', null, obj)).length;
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`))
+					.then(res => res.json())
+					.then((events) => {
+						expect(events).to.have.length(expectedSize);
+						events.forEach((event, i) => {
+							expect(event.dimensions).to.deep.equal({ ...sharedDims, ...otherDims[i] });
+						});
+					});
+			});
+		});
+
+		describe('metrics', () => {
+			it('should throw an error given an invalid metrics value', () => {
+				const dims = { test: true };
+				expect(() => transaction.metrics({ key: 'string' }, dims)).to.throw(Error);
+				expect(() => transaction.metrics({ key: NaN }, dims)).to.throw(Error);
+				expect(() => transaction.metrics({ key: Infinity }, dims)).to.throw(Error);
+				expect(() => transaction.metrics({ key: Infinity * (-1) }, dims)).to.throw(Error);
+			});
+
+			it('should track the value of metrics', () => {
+				const metric = 'test';
+				const values = [{ [metric]: 1 }, { [metric]: 2 }, { [metric]: 3 }];
+				const dims = { test: true };
+				const expectedSize = values.map(value => transaction.metrics(value, dims)).length;
+				return Bluebird
+					.delay(reportingInterval + 50)
+					.then(() => fetch(`${reportingEndpoint}/events`))
+					.then(res => res.json())
+					.then((events) => {
+						expect(events).to.have.length(expectedSize);
+						events.forEach((event, i) => {
+							expect(event.value).to.equal(values[i][metric]);
+							expect(event.dimensions).to.include({ metric });
 						});
 					});
 			});
@@ -219,15 +300,15 @@ describe('bitclock', () => {
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
 					.then(([event]) => {
-						expect(event.data).to.include(common);
-						expect(event.data).to.not.include(extra);
+						expect(event).to.include(common);
+						expect(event).to.not.include(extra);
 					})
 					.then(() => transaction.data(extra))
 					.then(() => transaction.dispatch(...args2))
 					.delay(reportingInterval + 50)
 					.then(() => fetch(`${reportingEndpoint}/events`))
 					.then(res => res.json())
-					.then(([event]) => expect(event.data).to.include({ ...common, ...extra }));
+					.then(([event]) => expect(event).to.include({ ...common, ...extra }));
 			});
 		});
 	});
@@ -394,6 +475,43 @@ describe('Helpers', () => {
 			document.cookie = testCookieString;
 			expect(getToken()).to.equal(testToken);
 		});
+	});
+});
+
+describe('MockWeakSet', () => {
+	const iterable = [{ n: 1 }, { n: 2 }, { n: 3 }];
+	const set = new MockWeakSet(iterable);
+
+	it('should accept an iterable', () => {
+		expect(set).to.include(...iterable);
+	});
+
+	it('should throw a TypeError given an invalid value', () => {
+		[0, null, undefined, true, 'string'].forEach((value) => {
+			expect(() => new MockWeakSet([value])).to.throw(TypeError);
+			expect(() => new MockWeakSet().add(value)).to.throw(TypeError);
+		});
+	});
+
+	it('should support WeakSet.has', () => {
+		iterable.forEach((value, i) => {
+			expect(set.has(iterable[i])).to.equal(true);
+		});
+	});
+
+	it('should support WeakSet.add', () => {
+		const value = { n: 4 };
+		set.add(value);
+		expect(set.has(value)).to.equal(true);
+	});
+
+	it('should support WeakSet.delete', () => {
+		const value = { n: 5 };
+		set.add(value);
+		expect(set.has(value)).to.equal(true);
+		set.delete();
+		set.delete(value);
+		expect(set.has(value)).to.equal(false);
 	});
 });
 
