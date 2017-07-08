@@ -3,6 +3,7 @@ import uuid from 'uuid';
 import fetch from 'isomorphic-fetch';
 import Bluebird from 'bluebird';
 import { expect } from 'chai';
+import sinon from 'sinon';
 import intercept from 'intercept-stdout';
 import stripAnsi from 'strip-ansi';
 import { parse as parseUrl } from 'url';
@@ -11,6 +12,7 @@ import { isUUID, isISO8601 } from 'validator';
 import { startServer, stopServer } from './server';
 import { config, Transaction, Waterfall } from '../lib/index';
 import { MockWeakSet } from '../lib/weak-set';
+import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
 
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
@@ -434,16 +436,33 @@ describe('bitclock', () => {
 });
 
 describe('Helpers', () => {
+	describe('once', () => {
+		it('should create a function that is only called once', () => {
+			const spy = sinon.spy(_.identity);
+			const fn = helpers.once(spy);
+			expect(fn(1)).to.equal(1);
+			expect(fn(2)).to.equal(1);
+			expect(spy.callCount).to.equal(1);
+		});
+	});
+
 	describe('getToken', () => {
-		const { document } = global;
-		const configToken = config().token;
-		const envToken = process.env.BITCLOCK_TOKEN;
-		const cookieString = document.cookie;
+		let document;
+		let configToken;
+		let envToken;
+		let cookieString;
 		let testToken;
 		let testCookieString;
 
 		// getToken is memoized so we need a fresh require for each test
 		let getToken;
+
+		before(() => {
+			({ document } = _.defaults(global, { document: {} }));
+			configToken = config().token;
+			envToken = process.env.BITCLOCK_TOKEN;
+			cookieString = document.cookie;
+		});
 
 		beforeEach(() => {
 			delete require.cache[require.resolve('../lib/helpers')];
@@ -456,6 +475,10 @@ describe('Helpers', () => {
 			config({ token: configToken });
 			process.env.BITCLOCK_TOKEN = envToken;
 			document.cookie = cookieString;
+		});
+
+		after(() => {
+			delete global.document;
 		});
 
 		it('should get the token from config', () => {

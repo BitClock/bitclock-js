@@ -13,12 +13,15 @@ const banner = `${pkg.name} - ${pkg.version} - ${new Date().toISOString()}`;
 
 export default {
 	context: __dirname,
-	entry: path.resolve('lib', 'index.js'),
+	entry: {
+		bitclock: path.resolve('lib', 'index.js'),
+		'bitclock.min': path.resolve('lib', 'index.js'),
+	},
 	output: {
 		path: path.resolve('dist'),
 		library: pkg.name,
-		libraryTarget: 'umd',
-		filename: `${pkg.name}.js`
+		libraryTarget: 'commonjs2',
+		filename: '[name].js'
 	},
 	resolve: {
 		alias: {
@@ -45,6 +48,7 @@ export default {
 			resource.request = '../dist/package.json';
 		}),
 		new optimize.UglifyJsPlugin({
+			include: /\.min\.js$/,
 			comments: false,
 			compress: { warnings: false }
 		}),
