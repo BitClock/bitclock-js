@@ -20,7 +20,7 @@ export default {
 	output: {
 		path: path.resolve('dist'),
 		library: pkg.name,
-		libraryTarget: 'commonjs2',
+		libraryTarget: 'umd',
 		filename: '[name].js'
 	},
 	resolve: {
