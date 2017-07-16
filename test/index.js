@@ -52,6 +52,24 @@ after(() => unhook());
 
 describe('bitclock', () => {
 	describe('config', () => {
+		it('should read config from __SECRET_BITCLOCK_CONFIG_JSON', () => {
+			const secretConfigJSON = JSON.parse(process.env.__SECRET_BITCLOCK_CONFIG_JSON);
+			expect(Object.keys(secretConfigJSON)).to.have.length.above(0);
+			expect(config()).to.include(secretConfigJSON);
+		});
+
+		it('should not throw an error when __SECRET_BITCLOCK_CONFIG_JSON is undefined', () => {
+			const { __SECRET_BITCLOCK_CONFIG_JSON } = process.env;
+			const cachedConfigModule = require.cache[require.resolve('../lib/config')];
+
+			delete process.env.__SECRET_BITCLOCK_CONFIG_JSON;
+			delete require.cache[require.resolve('../lib/config')];
+			expect(require('../lib/config').default.fromJSON).to.equal(undefined);
+
+			Object.assign(process.env, { __SECRET_BITCLOCK_CONFIG_JSON });
+			require.cache[require.resolve('../lib/config')] = cachedConfigModule;
+		});
+
 		it('should set config values', () => {
 			expect(config().bucket).to.equal(null);
 			config({ bucket: BUCKET_ID });

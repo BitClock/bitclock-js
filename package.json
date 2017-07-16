@@ -1,6 +1,6 @@
 {
   "name": "bitclock",
-  "version": "0.4.0-beta.4",
+  "version": "0.4.0-beta.5",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -28,7 +28,7 @@
     "prebuild": "npm run build:clean",
     "prepublish": "npm run build",
     "pretest": "npm run build:clean && npm run lint",
-    "test": "NODE_ENV=test nyc mocha --colors --compilers js:babel-register test"
+    "test": "NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromJSON\":true}' nyc mocha --colors --compilers js:babel-register test"
   },
   "lint-staged": {
     "*.js": "lint"
