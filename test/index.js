@@ -10,7 +10,7 @@ import { parse as parseUrl } from 'url';
 import { isUUID, isISO8601 } from 'validator';
 
 import { startServer, stopServer } from './server';
-import { config, Transaction, Waterfall } from '../lib/index';
+import { config, Transaction, Waterfall } from '../lib/main';
 import { MockWeakSet } from '../lib/weak-set';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
@@ -68,6 +68,37 @@ describe('bitclock', () => {
 
 			Object.assign(process.env, { __SECRET_BITCLOCK_CONFIG_JSON });
 			require.cache[require.resolve('../lib/config')] = cachedConfigModule;
+		});
+
+		it('should override the default export when __resolvedModule is set', function() {
+			if (process.browser) {
+				return this.skip();
+			}
+
+			const cachedConfig = config();
+			const cachedDefaultExport = require.cache[require.resolve('../lib')];
+
+			config({ __resolvedModule: require.resolve('./dummy-export') });
+			expect(require('../lib')).to.equal(require('./dummy-export'));
+
+			require.cache[require.resolve('../lib')] = cachedDefaultExport;
+			config(cachedConfig);
+		});
+
+		it('should fall back to the default export when __resolvedModule cannot be found', function() {
+			if (process.browser) {
+				return this.skip();
+			}
+
+			const cachedConfig = config();
+			const cachedDefaultExport = require.cache[require.resolve('../lib')];
+			const realMainExport = require('../lib');
+
+			config({ __resolvedModule: './not-a-real-module' });
+			expect(require('../lib')).to.equal(realMainExport);
+
+			require.cache[require.resolve('../lib')] = cachedDefaultExport;
+			config(cachedConfig);
 		});
 
 		it('should set config values', () => {
