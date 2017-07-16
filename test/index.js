@@ -18,11 +18,32 @@ import Stack from '../lib/stack';
 const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
 
 let unhook = _.noop;
+let interceptedErr;
+
+function interceptError(fn) {
+	return (...args) => {
+		const result = fn(...args);
+		const err = interceptedErr;
+		interceptedErr = undefined;
+		if (err) {
+			throw err;
+		}
+		return result;
+	};
+}
+
+afterEach(() => {
+	if (interceptedErr) {
+		unhook();
+		throw interceptedErr;
+	}
+});
 
 before(() => {
 	unhook = intercept((txt) => {
 		if (/(^|\W)(error|warning):(\W|$)/i.test(stripAnsi(txt))) {
-			throw new Error(txt);
+			interceptedErr = new Error(txt);
+			return '';
 		}
 	});
 });
@@ -116,7 +137,7 @@ describe('bitclock', () => {
 					bool: true,
 					fn: function() {},
 					symbol: Symbol('symbol'),
-					proxy: new Proxy({}, {})
+					proxy: (typeof Proxy === 'function' ? new Proxy({}, {}) : {})
 				};
 
 				const circular = {
@@ -206,10 +227,10 @@ describe('bitclock', () => {
 		describe('metrics', () => {
 			it('should throw an error given an invalid metrics value', () => {
 				const dims = { test: true };
-				expect(() => transaction.metrics({ key: 'string' }, dims)).to.throw(Error);
-				expect(() => transaction.metrics({ key: NaN }, dims)).to.throw(Error);
-				expect(() => transaction.metrics({ key: Infinity }, dims)).to.throw(Error);
-				expect(() => transaction.metrics({ key: Infinity * (-1) }, dims)).to.throw(Error);
+				expect(interceptError(() => transaction.metrics({ key: 'string' }, dims))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.metrics({ key: NaN }, dims))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.metrics({ key: Infinity }, dims))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.metrics({ key: Infinity * (-1) }, dims))).to.throw(/warning/i);
 			});
 
 			it('should track the value of metrics', () => {
@@ -234,20 +255,20 @@ describe('bitclock', () => {
 		describe('dispatch', () => {
 			it('should log a warning if dimensions is falsy', () => {
 				const args = ['type', 'value'];
-				expect(() => transaction.dispatch(...args)).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, '')).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, 0)).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, null)).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, false)).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, ''))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, 0))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, null))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, false))).to.throw(/warning/i);
 			});
 
 			it('should log a warning if dimensions is not a plain object', () => {
 				const args = ['type', 'value'];
-				expect(() => transaction.dispatch(...args, 1)).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, true)).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, [])).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, {})).to.throw(/warning/i);
-				expect(() => transaction.dispatch(...args, { nested: {} })).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, 1))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, true))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, []))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, {}))).to.throw(/warning/i);
+				expect(interceptError(() => transaction.dispatch(...args, { nested: {} }))).to.throw(/warning/i);
 				transaction.dispatch(...args, { test: true });
 				// clear the valid event from the server queue
 				return Bluebird
