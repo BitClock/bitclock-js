@@ -4,21 +4,70 @@ import fetch from 'isomorphic-fetch';
 import Bluebird from 'bluebird';
 import { expect } from 'chai';
 import sinon from 'sinon';
+import nock from 'nock';
 import intercept from 'intercept-stdout';
 import stripAnsi from 'strip-ansi';
-import { parse as parseUrl } from 'url';
 import { isUUID, isISO8601 } from 'validator';
 
-import { startServer, stopServer } from './server';
 import { config, Transaction, Waterfall } from '../lib/index';
+import { stack as requestStack } from '../lib/fetch-queue';
 import { MockWeakSet } from '../lib/weak-set';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
 
-const BUCKET_ID = 'cc6e1624-5b2c-524d-81ef-d11e61fc14d5';
+const testConfig = Object.freeze({
+	...config(),
+	bucket: uuid.v4(),
+	reportingInterval: 1,
+	reportingEndpoint: 'http://localhost:3000',
+	token: process.env.BITCLOCK_TOKEN || Math.random().toString(16)
+});
+
+function getPendingEvents() {
+	return Bluebird.try(function checkStackSize() {
+		return requestStack.size === 0 || Bluebird
+			.delay(testConfig.reportingInterval)
+			.then(() => checkStackSize());
+	})
+	.then(() => fetch(`${testConfig.reportingEndpoint}/events`))
+	.then(res => res.json());
+}
+
+function createMockServer() {
+	const events = [];
+	return nock(testConfig.reportingEndpoint)
+		.persist()
+		.post('/v0/bucket/null/event')
+		.reply(404)
+		.post(`/v0/bucket/timeout/event`)
+		.reply((uri, body, cb) => {
+			// send a timeout response after 200 ms
+			setTimeout(() => cb(null, [503, 'Service Unavailable']), 200);
+		})
+		.post(`/v0/bucket/${testConfig.bucket}/event`)
+		.reply(function(uri, { events: chunk }, cb) {
+			const { authorization: [authorization] } = this.req.headers;
+			if (authorization.indexOf(testConfig.token) === -1) {
+				failWith(new Error('Missing token'));
+			} else {
+				events.push(...chunk);
+				cb(null, [200, { chunk, total: events.length }]);
+			}
+		})
+		.get('/events')
+		.reply((uri, body, cb) => {
+			const slice = events.slice(0);
+			events.length = 0;
+			cb(null, [200, slice]);
+		});
+}
 
 let unhook = _.noop;
 let interceptedErr;
+
+function failWith(err) {
+	interceptedErr = err;
+}
 
 function interceptError(fn) {
 	return (...args) => {
@@ -42,7 +91,7 @@ afterEach(() => {
 before(() => {
 	unhook = intercept((txt) => {
 		if (/(^|\W)(error|warning):(\W|$)/i.test(stripAnsi(txt))) {
-			interceptedErr = new Error(txt);
+			failWith(new Error(txt));
 			return '';
 		}
 	});
@@ -72,39 +121,48 @@ describe('bitclock', () => {
 
 		it('should set config values', () => {
 			expect(config().bucket).to.equal(null);
-			config({ bucket: BUCKET_ID });
-			expect(config().bucket).to.equal(BUCKET_ID);
+			config({ bucket: testConfig.bucket });
+			expect(config().bucket).to.equal(testConfig.bucket);
 		});
 
 		it('should throw an error given an invalid reportingInterval', () => {
 			expect(() => config({ reportingInterval: null })).to.throw(Error);
-			expect(() => config({ reportingInterval: 1 })).to.throw(Error);
+			expect(() => config({ reportingInterval: -1 })).to.throw(Error);
 			expect(() => config({ reportingInterval: 300.5 })).to.throw(Error);
+			expect(() => config({ reportingInterval: Infinity })).to.throw(Error);
+		});
+
+		it('should log a warning given a non-optimal reportingInterval', () => {
+			expect(interceptError(() => config({ reportingInterval: 30 }))).to.throw(/warning/i);
+			expect(interceptError(() => config({ reportingInterval: 60000 }))).to.throw(/warning/i);
 		});
 
 		it('should throw an error given an invalid maxChunkSize', () => {
 			expect(() => config({ maxChunkSize: null })).to.throw(Error);
 			expect(() => config({ maxChunkSize: 0 })).to.throw(Error);
+			expect(() => config({ maxChunkSize: -1 })).to.throw(Error);
 			expect(() => config({ maxChunkSize: 10.5 })).to.throw(Error);
-			expect(() => config({ maxChunkSize: 3000 })).to.throw(Error);
+			expect(() => config({ maxChunkSize: Infinity })).to.throw(Error);
+		});
+
+		it('should log a warning given a non-optimal maxChunkSize', () => {
+			expect(interceptError(() => config({ maxChunkSize: 1 }))).to.throw(/warning/i);
+			expect(interceptError(() => config({ maxChunkSize: 3000 }))).to.throw(/warning/i);
 		});
 	});
 
 	describe('Transaction', () => {
-		const tmp = config();
-		const reportingInterval = 500;
-		const reportingEndpoint = 'http://localhost:3000';
 		let transaction;
 
 		before(() => {
-			config({ reportingInterval, reportingEndpoint });
-			return startServer(parseUrl(reportingEndpoint).port);
+			createMockServer();
+			try {
+				// config will complain about non-optimal reportingInterval
+				interceptError(() => config(testConfig))();
+			} catch (err) {/* noop */}
 		});
 
-		after(() => {
-			config(tmp);
-			return stopServer();
-		});
+		after(() => nock.cleanAll());
 
 		beforeEach(() => {
 			transaction = Transaction();
@@ -116,16 +174,12 @@ describe('bitclock', () => {
 				const otherDims = [{ bar: 'baz' }, { 'bing': 'bong' }, {}];
 				const t = Transaction({ dimensions: sharedDims });
 				const expectedSize = otherDims.map(obj => t.dispatch('test', null, obj)).length;
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
-					.then((events) => {
-						expect(events).to.have.length(expectedSize);
-						events.forEach((event, i) => {
-							expect(event.dimensions).to.deep.equal({ ...sharedDims, ...otherDims[i] });
-						});
+				return getPendingEvents().then((events) => {
+					expect(events).to.have.length(expectedSize);
+					events.forEach((event, i) => {
+						expect(event.dimensions).to.deep.equal({ ...sharedDims, ...otherDims[i] });
 					});
+				});
 			});
 		});
 
@@ -138,16 +192,12 @@ describe('bitclock', () => {
 		describe('toc', () => {
 			it('should work when no dimensions are passed to tic', () => {
 				expect(transaction.tic()({ dims: 'test' })).to.equal(transaction);
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`));
+				return getPendingEvents();
 			});
 
 			it('should work when no dimensions are passed to toc', () => {
 				expect(transaction.tic({ dims: 'test' })()).to.equal(transaction);
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`));
+				return getPendingEvents();
 			});
 
 			it('should safely handle invalid json', () => {
@@ -172,36 +222,31 @@ describe('bitclock', () => {
 					.data(circular)
 					.tic({ test: true })(null);
 
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
-					.then(([{ transactionId, timestamp, ...other }]) => {
-						expect(other.bool).to.equal(false);
-						expect(other.proxy).to.deep.equal({});
-						expect(other).to.include(_.omit(circular, 'circular'));
-						expect(isISO8601(timestamp)).to.be.ok;
-						expect(isUUID(transactionId)).to.be.ok;
-					});
+				return getPendingEvents().then(([{ transactionId, timestamp, ...other }]) => {
+					expect(other.bool).to.equal(false);
+					expect(other.proxy).to.deep.equal({});
+					expect(other).to.include(_.omit(circular, 'circular'));
+					expect(isISO8601(timestamp)).to.be.ok;
+					expect(isUUID(transactionId)).to.be.ok;
+				});
 			});
 
 			it('should enqueue an event created with tic', () => {
+				const maxDelay = 50;
 				const tests = _.map([1, 2, 3], (n) => {
 					return Bluebird
 						.resolve(transaction.tic({ test: n }))
-						.delay(_.random(1, reportingInterval))
+						.delay(_.random(1, maxDelay))
 						.then(toc => toc());
 				});
 
 				return Bluebird
 					.all(tests)
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
+					.then(() => getPendingEvents())
 					.then((events) => {
 						expect(events).to.have.length(tests.length);
 						events.forEach((event) => {
-							expect(event.value).to.be.within(1, reportingInterval + 50);
+							expect(event.value).to.be.within(1, maxDelay * 5);
 						});
 					});
 			});
@@ -210,16 +255,12 @@ describe('bitclock', () => {
 		describe('count', () => {
 			it('should count occurrences of an event', () => {
 				const expectedSize = [1, 2, 3].map(n => transaction.count({ test: n })).length;
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
-					.then((events) => {
-						expect(events).to.have.length(expectedSize);
-						events.forEach((event) => {
-							expect(event.value).to.equal(1);
-						});
+				return getPendingEvents().then((events) => {
+					expect(events).to.have.length(expectedSize);
+					events.forEach((event) => {
+						expect(event.value).to.equal(1);
 					});
+				});
 			});
 		});
 
@@ -229,16 +270,12 @@ describe('bitclock', () => {
 				const otherDims = [{ bar: 'baz' }, { 'bing': 'bong' }, {}];
 				const t = Transaction().dims(sharedDims);
 				const expectedSize = otherDims.map(obj => t.dispatch('test', null, obj)).length;
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
-					.then((events) => {
-						expect(events).to.have.length(expectedSize);
-						events.forEach((event, i) => {
-							expect(event.dimensions).to.deep.equal({ ...sharedDims, ...otherDims[i] });
-						});
+				return getPendingEvents().then((events) => {
+					expect(events).to.have.length(expectedSize);
+					events.forEach((event, i) => {
+						expect(event.dimensions).to.deep.equal({ ...sharedDims, ...otherDims[i] });
 					});
+				});
 			});
 		});
 
@@ -256,17 +293,13 @@ describe('bitclock', () => {
 				const values = [{ [metric]: 1 }, { [metric]: 2 }, { [metric]: 3 }];
 				const dims = { test: true };
 				const expectedSize = values.map(value => transaction.metrics(value, dims)).length;
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
-					.then((events) => {
-						expect(events).to.have.length(expectedSize);
-						events.forEach((event, i) => {
-							expect(event.value).to.equal(values[i][metric]);
-							expect(event.dimensions).to.include({ metric });
-						});
+				return getPendingEvents().then((events) => {
+					expect(events).to.have.length(expectedSize);
+					events.forEach((event, i) => {
+						expect(event.value).to.equal(values[i][metric]);
+						expect(event.dimensions).to.include({ metric });
 					});
+				});
 			});
 		});
 
@@ -289,18 +322,17 @@ describe('bitclock', () => {
 				expect(interceptError(() => transaction.dispatch(...args, { nested: {} }))).to.throw(/warning/i);
 				transaction.dispatch(...args, { test: true });
 				// clear the valid event from the server queue
-				return Bluebird
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json());
+				return getPendingEvents();
 			});
 
 			it('should not block promise chains when the server fails to respond', () => {
+				config({ bucket: 'timeout' });
 				const tStart = Date.now();
 				return Bluebird
 					.resolve(transaction.dispatch('timeout', null, { test: true }))
 					.then(() => expect(Date.now() - tStart).to.be.at.most(100))
-					.delay(1000);
+					.then(() => getPendingEvents())
+					.finally(() => config({ bucket: testConfig.bucket }));
 			});
 
 			it('should enqueue and send events in series', () => {
@@ -308,18 +340,14 @@ describe('bitclock', () => {
 				const args2 = ['type2', 'value2', { test: true }];
 				return Bluebird
 					.resolve(transaction.dispatch(...args1))
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
+					.then(() => getPendingEvents())
 					.then(([event]) => {
 						expect(event).to.have.property('type', args1[0]);
 						expect(event).to.have.property('value', args1[1]);
 						expect(event.dimensions).to.deep.equal(args1[2]);
 					})
 					.then(() => transaction.dispatch(...args2))
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
+					.then(() => getPendingEvents())
 					.then(([event]) => {
 						expect(event).to.have.property('type', args2[0]);
 						expect(event).to.have.property('value', args2[1]);
@@ -337,28 +365,21 @@ describe('bitclock', () => {
 				transaction.data(common);
 				return Bluebird
 					.resolve(transaction.dispatch(...args1))
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
+					.then(() => getPendingEvents())
 					.then(([event]) => {
 						expect(event).to.include(common);
 						expect(event).to.not.include(extra);
 					})
 					.then(() => transaction.data(extra))
 					.then(() => transaction.dispatch(...args2))
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
+					.then(() => getPendingEvents())
 					.then(([event]) => expect(event).to.include({ ...common, ...extra }));
 			});
 		});
 	});
 
 	describe('Waterfall', () => {
-		const tmp = config();
-		const reportingInterval = 500;
-		const reportingEndpoint = 'http://localhost:3000';
-		const delayRange = [100, 300];
+		const delayRange = [10, 50];
 		const elements = [
 			{ name: 'element.js', type: 'script' },
 			{ name: 'element.css', type: 'style' },
@@ -369,14 +390,14 @@ describe('bitclock', () => {
 		let waterfall;
 
 		before(() => {
-			config({ reportingInterval, reportingEndpoint });
-			return startServer(parseUrl(reportingEndpoint).port);
+			createMockServer();
+			try {
+				// config will complain about non-optimal reportingInterval
+				interceptError(() => config(testConfig))();
+			} catch (err) {/* noop */}
 		});
 
-		after(() => {
-			config(tmp);
-			return stopServer();
-		});
+		after(() => nock.cleanAll());
 
 		beforeEach(() => {
 			waterfall = Waterfall({ url: '/some/page' });
@@ -384,7 +405,7 @@ describe('bitclock', () => {
 
 		describe('point', () => {
 			it('should enqueue a non-deferred waterfall element', () => {
-				const initDelay = _.random(50, 100);
+				const initDelay = _.random(5, 20);
 				const pointElements = _.filter(elements, ({ type }) => !type);
 				return Bluebird
 					.delay(initDelay)
@@ -392,7 +413,7 @@ describe('bitclock', () => {
 						pointElements.forEach(waterfall.point);
 						waterfall.elements.forEach((element, i) => {
 							expect(element).to.not.have.property('elapsed');
-							expect(element.offset).to.be.within(initDelay, initDelay * 2);
+							expect(element.offset).to.be.within(initDelay, initDelay * 5);
 							expect(element).to.include(pointElements[i]);
 						});
 					});
@@ -402,7 +423,7 @@ describe('bitclock', () => {
 		describe('span', () => {
 			it('should enqueue a deferred waterfall element', () => {
 				const status = 200;
-				const initDelayRange = [50, 100];
+				const initDelayRange = [5, 20];
 				const spanElements = _.reject(elements, ({ type }) => !type);
 				let offsetSum = 0;
 				return Bluebird
@@ -414,7 +435,7 @@ describe('bitclock', () => {
 							.tap(() => {
 								const element = _.last(waterfall.elements);
 								expect(element).to.include(spanElement);
-								expect(element.offset).to.be.within(initDelay, initDelay * 2 + offsetSum);
+								expect(element.offset).to.be.within(initDelay, initDelay * 5 + offsetSum);
 								offsetSum += element.offset;
 							});
 					})
@@ -426,7 +447,7 @@ describe('bitclock', () => {
 					.then(() => (
 						waterfall.elements.forEach((element, i) => {
 							expect(element).to.include({ ...spanElements[i], status });
-							expect(element.elapsed).to.be.within(delayRange[0], delayRange[1] * 2);
+							expect(element.elapsed).to.be.within(delayRange[0], delayRange[1] * 5);
 						})
 					));
 			});
@@ -435,7 +456,7 @@ describe('bitclock', () => {
 		describe('commit', () => {
 			it('should dispatch a waterfall event', () => {
 				const status = 200;
-				const initDelayRange = [50, 100];
+				const initDelayRange = [5, 20];
 				return Bluebird
 					.mapSeries(elements, element => (
 						Bluebird
@@ -452,9 +473,7 @@ describe('bitclock', () => {
 							.then(() => fn({ status }))
 					))
 					.then(() => waterfall.commit())
-					.delay(reportingInterval + 50)
-					.then(() => fetch(`${reportingEndpoint}/events`))
-					.then(res => res.json())
+					.then(() => getPendingEvents())
 					.then(([event]) => {
 						expect(event).to.have.property('type', 'waterfall');
 						expect(event.value).to.have.length(elements.length);
