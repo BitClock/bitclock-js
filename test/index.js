@@ -149,6 +149,12 @@ describe('bitclock', () => {
 			expect(interceptError(() => config({ maxChunkSize: 1 }))).to.throw(/warning/i);
 			expect(interceptError(() => config({ maxChunkSize: 3000 }))).to.throw(/warning/i);
 		});
+
+		it('should suppress all logger output when silent is true', () => {
+			config({ silent: true, debug: true });
+			expect(interceptError(() => config({ maxChunkSize: 1 }))).to.not.throw(/warning/i);
+			config({ silent: false, debug: false });
+		});
 	});
 
 	describe('Transaction', () => {
