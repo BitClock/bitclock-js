@@ -151,9 +151,15 @@ describe('bitclock', () => {
 		});
 
 		it('should suppress all logger output when silent is true', () => {
-			config({ silent: true, debug: true });
-			expect(interceptError(() => config({ maxChunkSize: 1 }))).to.not.throw(/warning/i);
-			config({ silent: false, debug: false });
+			expect(interceptError(() => {
+				config({
+					maxChunkSize: 1,
+					debug: true,
+					silent: true
+				});
+			}))
+			.to.not.throw(/warning/i);
+			config({ debug: false, silent: false });
 		});
 	});
 
