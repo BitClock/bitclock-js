@@ -514,6 +514,15 @@ describe('Helpers', () => {
 			expect(fn(2)).to.equal(1);
 			expect(spy.callCount).to.equal(1);
 		});
+
+		it('should allow function to be called again if function.reset is called', () => {
+			const spy = sinon.spy(_.identity);
+			const fn = helpers.once(spy);
+			expect(fn(1)).to.equal(1);
+			fn.reset();
+			expect(fn(2)).to.equal(2);
+			expect(spy.callCount).to.equal(2);
+		});
 	});
 
 	describe('getToken', () => {
@@ -549,6 +558,13 @@ describe('Helpers', () => {
 
 		after(() => {
 			delete global.document;
+		});
+
+		it('should not cache falsy values', () => {
+			config({ token: undefined });
+			expect(getToken()).to.equal(undefined);
+			process.env.BITCLOCK_TOKEN = testToken;
+			expect(getToken()).to.equal(testToken);
 		});
 
 		it('should get the token from config', () => {
