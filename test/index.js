@@ -15,12 +15,16 @@ import { MockWeakSet } from '../lib/weak-set';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
 
+if (!('BITCLOCK_TOKEN' in process.env)) {
+	process.env.BITCLOCK_TOKEN = Math.random().toString(16);
+}
+
 const testConfig = Object.freeze({
 	...config(),
 	bucket: uuid.v4(),
 	reportingInterval: 1,
 	reportingEndpoint: 'http://localhost:3000',
-	token: process.env.BITCLOCK_TOKEN || Math.random().toString(16)
+	token: process.env.BITCLOCK_TOKEN
 });
 
 function getPendingEvents() {
@@ -34,20 +38,26 @@ function getPendingEvents() {
 }
 
 function createMockServer() {
+	const {
+		reportingEndpoint,
+		reportingAPIVersion,
+		bucket,
+		token
+	} = testConfig;
 	const events = [];
-	return nock(testConfig.reportingEndpoint)
+	return nock(reportingEndpoint)
 		.persist()
-		.post('/v0/bucket/null/event')
+		.post(`/${reportingAPIVersion}/bucket/null/event`)
 		.reply(404)
-		.post(`/v0/bucket/timeout/event`)
+		.post(`/${reportingAPIVersion}/bucket/timeout/event`)
 		.reply((uri, body, cb) => {
 			// send a timeout response after 200 ms
 			setTimeout(() => cb(null, [503, 'Service Unavailable']), 200);
 		})
-		.post(`/v0/bucket/${testConfig.bucket}/event`)
+		.post(`/${reportingAPIVersion}/bucket/${bucket}/event`)
 		.reply(function(uri, { events: chunk }, cb) {
 			const { authorization: [authorization] } = this.req.headers;
-			if (authorization.indexOf(testConfig.token) === -1) {
+			if (authorization.indexOf(token) === -1) {
 				failWith(new Error('Missing token'));
 			} else {
 				events.push(...chunk);
@@ -548,6 +558,8 @@ describe('Helpers', () => {
 			({ getToken } = require('../lib/helpers'));
 			testToken = uuid.v4();
 			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
+			process.env.BITCLOCK_TOKEN = undefined;
+			config({ token: undefined });
 		});
 
 		afterEach(() => {
@@ -561,7 +573,6 @@ describe('Helpers', () => {
 		});
 
 		it('should not cache falsy values', () => {
-			config({ token: undefined });
 			expect(getToken()).to.equal(undefined);
 			process.env.BITCLOCK_TOKEN = testToken;
 			expect(getToken()).to.equal(testToken);
@@ -573,14 +584,11 @@ describe('Helpers', () => {
 		});
 
 		it('should get the token from process.env', () => {
-			config({ token: undefined });
 			process.env.BITCLOCK_TOKEN = testToken;
 			expect(getToken()).to.equal(testToken);
 		});
 
 		it('should get the token from document.cookie', () => {
-			config({ token: undefined });
-			process.env.BITCLOCK_TOKEN = undefined;
 			document.cookie = testCookieString;
 			expect(getToken()).to.equal(testToken);
 		});

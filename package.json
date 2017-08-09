@@ -1,6 +1,6 @@
 {
   "name": "bitclock",
-  "version": "0.7.0-beta.3",
+  "version": "0.7.0-beta.4",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -20,15 +20,15 @@
   "scripts": {
     "build": "npm run build:babel && npm run build:package && npm run build:webpack",
     "build:babel": "babel lib --out-dir dist/lib --source-maps inline",
-    "build:clean": "rimraf dist coverage .nyc_output",
     "build:package": "node_modules/node-jq/bin/jq -rMc '{name: .name, version: .version}' package.json > dist/package.json",
-    "build:webpack": "webpack",
-    "lint": "eslint . --color --ignore-path .gitignore",
+    "build:webpack": "webpack --progress --hide-modules",
+    "clean": "rimraf dist coverage .nyc_output",
+    "lint": "eslint . --ignore-path .gitignore",
     "lint:staged": "lint-staged",
-    "prebuild": "npm run build:clean",
+    "prebuild": "npm run clean",
     "prepublish": "npm run build",
-    "pretest": "npm run build:clean && npm run lint",
-    "test": "NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromJSON\":true}' nyc mocha --colors --compilers js:babel-register test"
+    "pretest": "npm run clean && npm run lint",
+    "test": "cross-env NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromJSON\":true}' nyc mocha --compilers js:babel-register test"
   },
   "lint-staged": {
     "*.js": "lint"
@@ -49,10 +49,11 @@
     "babel-plugin-transform-export-extensions": "^6.8.0",
     "babel-plugin-transform-object-assign": "^6.22.0",
     "babel-plugin-transform-object-rest-spread": "^6.8.0",
-    "babel-preset-es2015": "^6.9.0",
+    "babel-preset-env": "^1.6.0",
     "babel-register": "^6.24.1",
     "bluebird": "^3.4.7",
     "chai": "^3.5.0",
+    "cross-env": "^5.0.5",
     "eslint": "^3.5.0",
     "eslint-import-resolver-webpack": "^0.8.3",
     "eslint-plugin-import": "^2.2.0",

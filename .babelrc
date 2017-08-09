@@ -1,10 +1,17 @@
 {
-	"presets": ["es2015"],
+	"presets": [
+		["env", {
+			"targets": {
+				"browsers": ["last 2 versions", "> 5%"]
+			},
+			"useBuiltins": true
+		}]
+	],
 	"plugins": [
 		"transform-object-assign",
+		"transform-object-rest-spread",
 		"transform-export-extensions",
-		"transform-class-properties",
-		"transform-object-rest-spread"
+		"transform-class-properties"
 	],
 	"env": {
 		"test": {
