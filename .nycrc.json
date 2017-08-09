@@ -1,6 +1,8 @@
 {
   "instrument": false,
   "sourceMap": false,
+  "cache": false,
+  "all": true,
   "lines": 80,
   "statements": 80,
   "functions": 80,
@@ -10,8 +12,6 @@
     "text-summary",
     "html"
   ],
-  "cache": true,
-  "all": true,
   "include": [
     "lib/**/*.js"
   ],
