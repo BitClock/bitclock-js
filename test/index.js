@@ -15,16 +15,11 @@ import { MockWeakSet } from '../lib/weak-set';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
 
-if (!('BITCLOCK_TOKEN' in process.env)) {
-	process.env.BITCLOCK_TOKEN = Math.random().toString(16);
-}
-
 const testConfig = Object.freeze({
 	...config(),
 	bucket: uuid.v4(),
 	reportingInterval: 1,
-	reportingEndpoint: 'http://localhost:3000',
-	token: process.env.BITCLOCK_TOKEN
+	reportingEndpoint: 'http://localhost:3000'
 });
 
 function getPendingEvents() {
