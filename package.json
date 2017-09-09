@@ -1,7 +1,7 @@
 {
   "name": "bitclock",
-  "version": "0.7.0-beta.5",
-  "license": "Apache-2.0",
+  "version": "0.7.0-beta.6",
+  "license": "BSD-3-Clause",
   "repository": {
     "type": "git",
     "url": "https://github.com/BitClock/bitclock-js.git"
