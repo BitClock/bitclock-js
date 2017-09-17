@@ -239,10 +239,10 @@ describe('bitclock', () => {
 					.data(circular)
 					.tic({ test: true })(null);
 
-				return getPendingEvents().then(([{ transactionId, timestamp, ...other }]) => {
-					expect(other.bool).to.equal(false);
-					expect(other.proxy).to.deep.equal({});
-					expect(other).to.include(_.omit(circular, 'circular'));
+				return getPendingEvents().then(([{ transactionId, timestamp, data }]) => {
+					expect(data.bool).to.equal(false);
+					expect(data.proxy).to.deep.equal({});
+					expect(data).to.include(_.omit(circular, 'circular'));
 					expect(isISO8601(timestamp)).to.be.ok;
 					expect(isUUID(transactionId)).to.be.ok;
 				});
@@ -383,14 +383,14 @@ describe('bitclock', () => {
 				return Bluebird
 					.resolve(transaction.dispatch(...args1))
 					.then(() => getPendingEvents())
-					.then(([event]) => {
-						expect(event).to.include(common);
-						expect(event).to.not.include(extra);
+					.then(([{ data }]) => {
+						expect(data).to.include(common);
+						expect(data).to.not.include(extra);
 					})
 					.then(() => transaction.data(extra))
 					.then(() => transaction.dispatch(...args2))
 					.then(() => getPendingEvents())
-					.then(([event]) => expect(event).to.include({ ...common, ...extra }));
+					.then(([{ data }]) => expect(data).to.include({ ...common, ...extra }));
 			});
 		});
 	});
