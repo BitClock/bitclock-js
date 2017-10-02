@@ -9,7 +9,7 @@ import intercept from 'intercept-stdout';
 import stripAnsi from 'strip-ansi';
 import { isUUID, isISO8601 } from 'validator';
 
-import { config, Transaction, Waterfall } from '../lib/index';
+import { config, ensureIndex, Transaction, Waterfall } from '../lib/index';
 import { stack as requestStack } from '../lib/fetch-queue';
 import { MockWeakSet } from '../lib/weak-set';
 import * as helpers from '../lib/helpers';
@@ -57,6 +57,15 @@ function createMockServer() {
 			} else {
 				events.push(...chunk);
 				cb(null, [200, { chunk, total: events.length }]);
+			}
+		})
+		.post(`/${reportingAPIVersion}/bucket/${bucket}/index`)
+		.reply(function(uri, body, cb) {
+			const { authorization: [authorization] } = this.req.headers;
+			if (authorization.indexOf(token) === -1) {
+				failWith(new Error('Missing token'));
+			} else {
+				cb(null, [200, body]);
 			}
 		})
 		.get('/events')
@@ -166,6 +175,32 @@ describe('bitclock', () => {
 			.to.not.throw(/warning/i);
 			config({ debug: false, silent: false });
 		});
+	});
+
+	describe('ensureIndex', () => {
+		before(() => {
+			createMockServer();
+			try {
+				// config will complain about non-optimal reportingInterval
+				interceptError(() => config(testConfig))();
+			} catch (err) {/* noop */}
+		});
+
+		after(() => nock.cleanAll());
+
+		it('should ensure an index by name', () => (
+			ensureIndex('test').then(({ name, keys }) => {
+				expect(name).to.equal('test');
+				expect(keys).to.deep.equal(['test']);
+			})
+		));
+
+		it('should accept an array of keys', () => (
+			ensureIndex('test', ['foo', 'bar']).then(({ name, keys }) => {
+				expect(name).to.equal('test');
+				expect(keys).to.deep.equal(['foo', 'bar']);
+			})
+		));
 	});
 
 	describe('Transaction', () => {
