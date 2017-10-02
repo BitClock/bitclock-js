@@ -15,13 +15,15 @@
   "engines": {
     "node": ">=4"
   },
-  "main": "dist/lib",
+  "main": "dist/node",
+  "module": "dist/module",
   "browser": "dist/bitclock.js",
   "scripts": {
-    "build": "npm run build:babel && npm run build:package && npm run build:webpack",
-    "build:babel": "babel lib --out-dir dist/lib --source-maps inline",
+    "build": "npm run build:module && npm run build:node && npm run build:package && npm run build:webpack",
+    "build:module": "BABEL_PLATFORM=browser babel lib --out-dir dist/module --source-maps inline",
+    "build:node": "BABEL_PLATFORM=node babel lib --out-dir dist/node --source-maps inline",
     "build:package": "node_modules/node-jq/bin/jq -rMc '{name: .name, version: .version}' package.json > dist/package.json",
-    "build:webpack": "webpack --progress --hide-modules",
+    "build:webpack": "BABEL_PLATFORM=browser webpack --progress --hide-modules",
     "clean": "rimraf dist coverage .nyc_output",
     "lint": "eslint . --ignore-path .gitignore",
     "lint:staged": "lint-staged",
@@ -51,6 +53,7 @@
     "babel-plugin-transform-object-assign": "^6.22.0",
     "babel-plugin-transform-object-rest-spread": "^6.8.0",
     "babel-preset-env": "^1.6.0",
+    "babel-preset-platform": "^1.0.0-alpha.1",
     "babel-register": "^6.24.1",
     "bluebird": "^3.4.7",
     "chai": "^3.5.0",
