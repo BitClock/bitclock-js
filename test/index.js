@@ -10,7 +10,7 @@ import stripAnsi from 'strip-ansi';
 import { isUUID, isISO8601 } from 'validator';
 
 import { config, ensureIndex, Transaction, Waterfall } from '../lib/index';
-import { stack as requestStack } from '../lib/fetch-queue';
+import { stack as requestStack } from '../lib/event-queue';
 import { MockWeakSet } from '../lib/weak-set';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
