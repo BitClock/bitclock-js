@@ -1,22 +1,41 @@
 {
-	"presets": [
-		["env", {
-			"targets": {
-				"browsers": ["last 2 versions", "> 5%"]
+	presets: [
+		['platform', {
+			browser: {
+				presets: [
+					['env', {
+						targets: {
+							browsers: ['last 2 versions', '> 5%']
+						}
+					}]
+				],
+				plugins: [
+					'transform-object-assign'
+				]
 			},
-			"useBuiltins": true
+			node: {
+				presets: [
+					['env', {
+						targets: { node: 4 }
+					}]
+				]
+			},
+			'*': {
+				presets: [
+					['env', { useBuiltins: true }]
+				]
+			}
 		}]
 	],
-	"plugins": [
-		"transform-object-assign",
-		"transform-object-rest-spread",
-		"transform-export-extensions",
-		"transform-class-properties"
+	plugins: [
+		'transform-object-rest-spread',
+		'transform-export-extensions',
+		'transform-class-properties'
 	],
-	"env": {
-		"test": {
-			"plugins": [
-				"istanbul"
+	env: {
+		test: {
+			plugins: [
+				'istanbul'
 			]
 		}
 	}
