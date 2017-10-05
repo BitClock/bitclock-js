@@ -314,6 +314,16 @@ describe('bitclock', () => {
 					});
 				});
 			});
+
+			it('should accept an optional quantity argument', () => {
+				const expectedSize = [1, 2, 3].map(n => transaction.count({ test: n }, n)).length;
+				return getPendingEvents().then((events) => {
+					expect(events).to.have.length(expectedSize);
+					events.forEach((event, i) => {
+						expect(event.value).to.equal(i + 1);
+					});
+				});
+			});
 		});
 
 		describe('dimensions', () => {
