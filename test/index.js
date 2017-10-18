@@ -11,7 +11,6 @@ import { isUUID, isISO8601 } from 'validator';
 
 import { config, ensureIndex, Transaction, Waterfall } from '../lib/index';
 import { stack as requestStack } from '../lib/event-queue';
-import { MockWeakSet } from '../lib/weak-set';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
 
@@ -632,43 +631,6 @@ describe('Helpers', () => {
 			document.cookie = testCookieString;
 			expect(getToken()).to.equal(testToken);
 		});
-	});
-});
-
-describe('MockWeakSet', () => {
-	const iterable = [{ n: 1 }, { n: 2 }, { n: 3 }];
-	const set = new MockWeakSet(iterable);
-
-	it('should accept an iterable', () => {
-		expect(set).to.include(...iterable);
-	});
-
-	it('should throw a TypeError given an invalid value', () => {
-		[0, null, undefined, true, 'string'].forEach((value) => {
-			expect(() => new MockWeakSet([value])).to.throw(TypeError);
-			expect(() => new MockWeakSet().add(value)).to.throw(TypeError);
-		});
-	});
-
-	it('should support WeakSet.has', () => {
-		iterable.forEach((value, i) => {
-			expect(set.has(iterable[i])).to.equal(true);
-		});
-	});
-
-	it('should support WeakSet.add', () => {
-		const value = { n: 4 };
-		set.add(value);
-		expect(set.has(value)).to.equal(true);
-	});
-
-	it('should support WeakSet.delete', () => {
-		const value = { n: 5 };
-		set.add(value);
-		expect(set.has(value)).to.equal(true);
-		set.delete();
-		set.delete(value);
-		expect(set.has(value)).to.equal(false);
 	});
 });
 
