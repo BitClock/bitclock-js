@@ -1,30 +1,21 @@
 import path from 'path';
-import {
-	optimize,
-	BannerPlugin,
-	DefinePlugin,
-	NormalModuleReplacementPlugin
-} from 'webpack';
+import { BannerPlugin, DefinePlugin, NormalModuleReplacementPlugin } from 'webpack';
 
-import pkg from './package.json';
+import pkg from '../package.json';
 
 const banner = `${pkg.name} - ${pkg.version} - ${new Date().toISOString()}`;
 
-export default {
-	context: __dirname,
-	entry: {
-		bitclock: path.resolve('./lib'),
-		'bitclock.min': path.resolve('./lib')
-	},
+export default ({ output = {}, plugins = [], ...other }) => ({
+	context: path.resolve(__dirname, '..'),
 	output: {
-		path: path.resolve('dist'),
+		path: path.resolve(__dirname, '../dist'),
 		library: pkg.name,
-		libraryTarget: 'umd',
-		filename: '[name].js'
+		filename: '[name].js',
+		...output
 	},
 	resolve: {
 		alias: {
-			'package.json': path.resolve('./dist/package.json')
+			'package.json': path.resolve(__dirname, '../dist/package.json')
 		}
 	},
 	plugins: [
@@ -35,11 +26,7 @@ export default {
 		new NormalModuleReplacementPlugin(/package\.json/i, (resource) => {
 			resource.request = '../dist/package.json';
 		}),
-		new optimize.UglifyJsPlugin({
-			include: /\.min\.js$/,
-			comments: false,
-			compress: { warnings: false }
-		}),
+		...plugins,
 		new BannerPlugin({ banner, entryOnly: true })
 	],
 	module: {
@@ -54,5 +41,6 @@ export default {
 			test: /\.json$/,
 			use: 'json-loader'
 		}]
-	}
-};
+	},
+	...other
+});
