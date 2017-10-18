@@ -5,12 +5,9 @@
 				presets: [
 					['env', {
 						targets: {
-							browsers: ['last 2 versions', '> 5%']
+							browsers: ['last 2 versions', 'ie >= 11']
 						}
 					}]
-				],
-				plugins: [
-					'transform-object-assign'
 				]
 			},
 			node: {
@@ -28,9 +25,9 @@
 		}]
 	],
 	plugins: [
+		'transform-runtime',
 		'transform-object-rest-spread',
-		'transform-export-extensions',
-		'transform-class-properties'
+		'transform-export-extensions'
 	],
 	env: {
 		test: {

@@ -1,6 +1,6 @@
 {
   "name": "bitclock",
-  "version": "0.9.0-beta.3",
+  "version": "0.10.0-beta.1",
   "license": "BSD-3-Clause",
   "repository": {
     "type": "git",
@@ -29,7 +29,7 @@
     "lint:staged": "lint-staged",
     "mocha": "nyc mocha --require test/setup.js --compilers js:babel-register test/index.js",
     "prebuild": "npm run clean",
-    "prepublish": "npm run build",
+    "prepublishOnly": "npm run build",
     "pretest": "npm run clean && npm run lint",
     "test": "cross-env NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromJSON\":true}' npm run mocha"
   },
@@ -38,20 +38,19 @@
   },
   "pre-commit": "lint:staged",
   "dependencies": {
+    "babel-runtime": "^6.26.0",
     "cookie": "^0.3.1",
     "isomorphic-fetch": "^2.2.1",
-    "uuid": "^3.0.1",
-    "wee-promise": "^1.1.0"
+    "uuid": "^3.0.1"
   },
   "devDependencies": {
     "babel-cli": "^6.23.0",
     "babel-eslint": "^6.1.2",
     "babel-loader": "^7.1.1",
     "babel-plugin-istanbul": "^4.1.4",
-    "babel-plugin-transform-class-properties": "^6.11.5",
     "babel-plugin-transform-export-extensions": "^6.8.0",
-    "babel-plugin-transform-object-assign": "^6.22.0",
     "babel-plugin-transform-object-rest-spread": "^6.8.0",
+    "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-env": "^1.6.0",
     "babel-preset-platform": "^1.0.0-alpha.1",
     "babel-register": "^6.24.1",
