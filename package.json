@@ -31,7 +31,8 @@
     "prebuild": "npm run clean",
     "prepublishOnly": "npm run build",
     "pretest": "npm run clean && npm run lint",
-    "test": "cross-env NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromJSON\":true}' npm run mocha"
+    "test": "npm run test-only",
+    "test-only": "cross-env NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromJSON\":true}' npm run mocha"
   },
   "lint-staged": {
     "*.js": "lint"

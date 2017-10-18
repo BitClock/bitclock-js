@@ -174,6 +174,24 @@ describe('bitclock', () => {
 			.to.not.throw(/warning/i);
 			config({ debug: false, silent: false });
 		});
+
+		it('should reset the getToken helper if opts.token exists', () => {
+			const envToken = process.env.BITCLOCK_TOKEN;
+			expect(helpers.getToken()).to.equal(config().token);
+			process.env.BITCLOCK_TOKEN = undefined;
+			try {
+				expect(helpers.getToken()).to.equal(config().token);
+				config({ token: null });
+				expect(helpers.getToken()).to.equal(null);
+				process.env.BITCLOCK_TOKEN = envToken;
+				expect(helpers.getToken()).to.equal(envToken);
+			} catch (err) {
+				throw err;
+			} finally {
+				process.env.BITCLOCK_TOKEN = envToken;
+				config({ token: testConfig.token });
+			}
+		});
 	});
 
 	describe('ensureIndex', () => {
