@@ -126,9 +126,18 @@ describe('bitclock', () => {
 
 			delete process.env.__SECRET_BITCLOCK_CONFIG_JSON;
 			delete require.cache[require.resolve('../lib/config')];
-			expect(require('../lib/config').default.fromJSON).to.equal(undefined);
+			expect(require('../lib/config').default.fromENV).to.equal(undefined);
 
 			Object.assign(process.env, { __SECRET_BITCLOCK_CONFIG_JSON });
+			require.cache[require.resolve('../lib/config')] = cachedConfigModule;
+		});
+
+		it('should read config from BITCLOCK_CONFIG_JSON', () => {
+			const cachedConfigModule = require.cache[require.resolve('../lib/config')];
+			delete require.cache[require.resolve('../lib/config')];
+			global.BITCLOCK_CONFIG_JSON = JSON.stringify({ fromGlobal: true });
+			expect(require('../lib/config').default.fromGlobal).to.equal(true);
+			delete global.BITCLOCK_CONFIG_JSON;
 			require.cache[require.resolve('../lib/config')] = cachedConfigModule;
 		});
 
@@ -182,7 +191,7 @@ describe('bitclock', () => {
 			try {
 				expect(helpers.getToken()).to.equal(config().token);
 				config({ token: null });
-				expect(helpers.getToken()).to.equal(null);
+				expect(helpers.getToken()).to.equal(undefined);
 				process.env.BITCLOCK_TOKEN = envToken;
 				expect(helpers.getToken()).to.equal(envToken);
 			} catch (err) {

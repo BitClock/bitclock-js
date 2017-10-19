@@ -33,7 +33,7 @@
     "prepublishOnly": "npm run build",
     "pretest": "npm run clean && npm run lint",
     "test": "npm run test-only",
-    "test-only": "cross-env NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromJSON\":true}' npm run mocha",
+    "test-only": "cross-env NODE_ENV=test __SECRET_BITCLOCK_CONFIG_JSON='{\"fromENV\":true}' npm run mocha",
     "webpack": "BABEL_PLATFORM=browser NODE_ENV=production webpack --progress --hide-modules"
   },
   "lint-staged": {
@@ -55,7 +55,7 @@
     "babel-plugin-transform-object-rest-spread": "^6.8.0",
     "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-env": "^1.6.0",
-    "babel-preset-platform": "^1.0.0-alpha.1",
+    "babel-preset-platform": "^1.0.0-alpha.2",
     "babel-register": "^6.24.1",
     "bluebird": "^3.4.7",
     "chai": "^3.5.0",

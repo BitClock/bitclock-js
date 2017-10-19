@@ -19,7 +19,7 @@
 			},
 			'*': {
 				presets: [
-					['env', { useBuiltins: true }]
+					['env', { useBuiltIns: true }]
 				]
 			}
 		}]
