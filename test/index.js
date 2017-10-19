@@ -10,14 +10,15 @@ import stripAnsi from 'strip-ansi';
 import { isUUID, isISO8601 } from 'validator';
 import { randomBytes } from 'crypto';
 
-import { config, ensureIndex, Transaction, Waterfall } from '../lib/index';
+import { ensureIndex, Config, Transaction, Waterfall } from '../lib/index';
 import { stack as requestStack } from '../lib/event-queue';
 import * as auth from '../lib/auth';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
 
+const initialConfig = Object.freeze(Config());
 const testConfig = Object.freeze({
-	...config(),
+	...initialConfig,
 	bucket: uuid.v4(),
 	reportingInterval: 1,
 	reportingEndpoint: 'http://localhost:3000'
@@ -114,11 +115,11 @@ before(() => {
 
 after(() => unhook());
 
-describe('config', () => {
+describe('Config', () => {
 	it('should read config from __SECRET_BITCLOCK_CONFIG_JSON', () => {
 		const secretConfigJSON = JSON.parse(process.env.__SECRET_BITCLOCK_CONFIG_JSON);
 		expect(Object.keys(secretConfigJSON)).to.have.length.above(0);
-		expect(config()).to.include(secretConfigJSON);
+		expect(Config()).to.include(secretConfigJSON);
 	});
 
 	it('should not throw an error when __SECRET_BITCLOCK_CONFIG_JSON is undefined', () => {
@@ -127,71 +128,73 @@ describe('config', () => {
 
 		delete process.env.__SECRET_BITCLOCK_CONFIG_JSON;
 		delete require.cache[require.resolve('../lib/config')];
-		expect(require('../lib/config').default.fromENV).to.equal(undefined);
+		expect(require('../lib/config').default().fromENV).to.equal(undefined);
 
 		Object.assign(process.env, { __SECRET_BITCLOCK_CONFIG_JSON });
 		require.cache[require.resolve('../lib/config')] = cachedConfigModule;
 	});
 
-	it('should read config from BITCLOCK_CONFIG_JSON', () => {
+	it('should read config from BITCLOCK_SERIALIZED_CONFIG', () => {
 		const cachedConfigModule = require.cache[require.resolve('../lib/config')];
 		delete require.cache[require.resolve('../lib/config')];
-		global.BITCLOCK_CONFIG_JSON = JSON.stringify({ fromGlobal: true });
-		expect(require('../lib/config').default.fromGlobal).to.equal(true);
-		delete global.BITCLOCK_CONFIG_JSON;
+		global.BITCLOCK_SERIALIZED_CONFIG = helpers.base64Encode(
+			JSON.stringify({ fromGlobal: true })
+		);
+		expect(require('../lib/config').default().fromGlobal).to.equal(true);
+		delete global.BITCLOCK_SERIALIZED_CONFIG;
 		require.cache[require.resolve('../lib/config')] = cachedConfigModule;
 	});
 
 	it('should set config values', () => {
-		expect(config().bucket).to.equal(null);
-		config({ bucket: testConfig.bucket });
-		expect(config().bucket).to.equal(testConfig.bucket);
+		expect(Config().bucket).to.equal(null);
+		Config({ bucket: testConfig.bucket });
+		expect(Config().bucket).to.equal(testConfig.bucket);
 	});
 
 	it('should throw an error given an invalid reportingInterval', () => {
-		expect(() => config({ reportingInterval: null })).to.throw(Error);
-		expect(() => config({ reportingInterval: -1 })).to.throw(Error);
-		expect(() => config({ reportingInterval: 300.5 })).to.throw(Error);
-		expect(() => config({ reportingInterval: Infinity })).to.throw(Error);
+		expect(() => Config({ reportingInterval: null })).to.throw(Error);
+		expect(() => Config({ reportingInterval: -1 })).to.throw(Error);
+		expect(() => Config({ reportingInterval: 300.5 })).to.throw(Error);
+		expect(() => Config({ reportingInterval: Infinity })).to.throw(Error);
 	});
 
 	it('should log a warning given a non-optimal reportingInterval', () => {
-		expect(interceptError(() => config({ reportingInterval: 30 }))).to.throw(/warning/i);
-		expect(interceptError(() => config({ reportingInterval: 60000 }))).to.throw(/warning/i);
+		expect(interceptError(() => Config({ reportingInterval: 30 }))).to.throw(/warning/i);
+		expect(interceptError(() => Config({ reportingInterval: 60000 }))).to.throw(/warning/i);
 	});
 
 	it('should throw an error given an invalid maxChunkSize', () => {
-		expect(() => config({ maxChunkSize: null })).to.throw(Error);
-		expect(() => config({ maxChunkSize: 0 })).to.throw(Error);
-		expect(() => config({ maxChunkSize: -1 })).to.throw(Error);
-		expect(() => config({ maxChunkSize: 10.5 })).to.throw(Error);
-		expect(() => config({ maxChunkSize: Infinity })).to.throw(Error);
+		expect(() => Config({ maxChunkSize: null })).to.throw(Error);
+		expect(() => Config({ maxChunkSize: 0 })).to.throw(Error);
+		expect(() => Config({ maxChunkSize: -1 })).to.throw(Error);
+		expect(() => Config({ maxChunkSize: 10.5 })).to.throw(Error);
+		expect(() => Config({ maxChunkSize: Infinity })).to.throw(Error);
 	});
 
 	it('should log a warning given a non-optimal maxChunkSize', () => {
-		expect(interceptError(() => config({ maxChunkSize: 1 }))).to.throw(/warning/i);
-		expect(interceptError(() => config({ maxChunkSize: 3000 }))).to.throw(/warning/i);
+		expect(interceptError(() => Config({ maxChunkSize: 1 }))).to.throw(/warning/i);
+		expect(interceptError(() => Config({ maxChunkSize: 3000 }))).to.throw(/warning/i);
 	});
 
 	it('should suppress all logger output when silent is true', () => {
 		expect(interceptError(() => {
-			config({
+			Config({
 				maxChunkSize: 1,
 				debug: true,
 				silent: true
 			});
 		}))
 		.to.not.throw(/warning/i);
-		config({ debug: false, silent: false });
+		Config({ debug: false, silent: false });
 	});
 
 	it('should reset the getToken helper if opts.token exists', () => {
 		const envToken = process.env.BITCLOCK_TOKEN;
-		expect(auth.getToken()).to.equal(config().token);
+		expect(auth.getToken()).to.equal(Config().token);
 		process.env.BITCLOCK_TOKEN = undefined;
 		try {
-			expect(auth.getToken()).to.equal(config().token);
-			config({ token: null });
+			expect(auth.getToken()).to.equal(Config().token);
+			Config({ token: null });
 			expect(auth.getToken()).to.equal(undefined);
 			process.env.BITCLOCK_TOKEN = envToken;
 			expect(auth.getToken()).to.equal(envToken);
@@ -199,8 +202,52 @@ describe('config', () => {
 			throw err;
 		} finally {
 			process.env.BITCLOCK_TOKEN = envToken;
-			config({ token: testConfig.token });
+			Config({ token: testConfig.token });
 		}
+	});
+
+	describe('reset', () => {
+		it('should reset the config store to its inital value', () => {
+			Config({ foo: 'bar' });
+			expect(Config()).to.not.deep.equal(initialConfig);
+			Config.reset();
+			expect(Config()).to.deep.equal(initialConfig);
+		});
+	});
+
+	describe('serialize', () => {
+		before(() => Config.reset());
+
+		function mockDeserialize(input) {
+			return JSON.parse(helpers.base64Decode(input));
+		}
+
+		it('should serialize changes to the event store as an encoded string', () => {
+			// eslint-disable-next-line no-unused-vars
+			const { token, ...other } = mockDeserialize(Config.serialize());
+			expect(other).to.deep.equal({});
+		});
+
+		it('should generate a signed token by default', () => {
+			const { token } = mockDeserialize(Config.serialize());
+			expect(token).to.not.equal(Config().token);
+			expect(token.startsWith(auth.preamble)).to.equal(true);
+		});
+
+		it('should optionally serialize the entire config store', () => {
+			expect(mockDeserialize(Config.serialize(true))).to.deep.equal(Config());
+		});
+	});
+
+	describe('deserialize', () => {
+		it('should decode a serialized config string', () => {
+			const encoded = Config.serialize(true);
+			expect(Config.deserialize(encoded)).to.deep.equal(Config());
+		});
+
+		it('should return an empty object if input is falsy', () => {
+			expect(Config.deserialize()).to.deep.equal({});
+		});
 	});
 });
 
@@ -209,7 +256,7 @@ describe('ensureIndex', () => {
 		createMockServer();
 		try {
 			// config will complain about non-optimal reportingInterval
-			interceptError(() => config(testConfig))();
+			interceptError(() => Config(testConfig))();
 		} catch (err) {/* noop */}
 	});
 
@@ -237,7 +284,7 @@ describe('Transaction', () => {
 		createMockServer();
 		try {
 			// config will complain about non-optimal reportingInterval
-			interceptError(() => config(testConfig))();
+			interceptError(() => Config(testConfig))();
 		} catch (err) {/* noop */}
 	});
 
@@ -415,13 +462,13 @@ describe('Transaction', () => {
 		});
 
 		it('should not block promise chains when the server fails to respond', () => {
-			config({ bucket: 'timeout' });
+			Config({ bucket: 'timeout' });
 			const tStart = Date.now();
 			return Bluebird
 				.resolve(transaction.dispatch('timeout', null, { test: true }))
 				.then(() => expect(Date.now() - tStart).to.be.at.most(100))
 				.then(() => getPendingEvents())
-				.finally(() => config({ bucket: testConfig.bucket }));
+				.finally(() => Config({ bucket: testConfig.bucket }));
 		});
 
 		it('should enqueue and send events in series', () => {
@@ -482,7 +529,7 @@ describe('Waterfall', () => {
 		createMockServer();
 		try {
 			// config will complain about non-optimal reportingInterval
-			interceptError(() => config(testConfig))();
+			interceptError(() => Config(testConfig))();
 		} catch (err) {/* noop */}
 	});
 
@@ -660,7 +707,7 @@ describe('auth', () => {
 
 		before(() => {
 			({ document } = _.defaults(global, { document: {} }));
-			configToken = config().token;
+			configToken = Config().token;
 			envToken = process.env.BITCLOCK_TOKEN;
 			cookieString = document.cookie;
 		});
@@ -669,11 +716,11 @@ describe('auth', () => {
 			testToken = randomBytes(40).toString('hex');
 			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
 			process.env.BITCLOCK_TOKEN = undefined;
-			config({ token: undefined });
+			Config({ token: undefined });
 		});
 
 		afterEach(() => {
-			config({ token: configToken });
+			Config({ token: configToken });
 			process.env.BITCLOCK_TOKEN = envToken;
 			document.cookie = cookieString;
 		});
@@ -683,7 +730,7 @@ describe('auth', () => {
 		});
 
 		it('should get the token from config', () => {
-			config({ token: testToken });
+			Config({ token: testToken });
 			expect(auth.getToken()).to.equal(testToken);
 		});
 
@@ -713,7 +760,7 @@ describe('auth', () => {
 
 	describe('signToken', () => {
 		it('should sign a token', () => {
-			const { token } = config();
+			const { token } = Config();
 			const signed = auth.signToken(token);
 			expect(signed.startsWith(auth.preamble)).to.equal(true);
 		});
@@ -727,7 +774,7 @@ describe('auth', () => {
 
 	describe('parseToken', () => {
 		it('should parse a token', () => {
-			const { token } = config();
+			const { token } = Config();
 			const [fingerprint, secret] = auth.parseToken(token);
 			expect(`${fingerprint}${secret}`).to.equal(token);
 		});
@@ -739,7 +786,7 @@ describe('auth', () => {
 
 	describe('decodeToken', () => {
 		it('should decode a signed token', () => {
-			const { token } = config();
+			const { token } = Config();
 			const signed = auth.signToken(token);
 			const [fp, secret] = auth.parseToken(token);
 			const { fingerprint, salt, timestamp, proof } = auth.decodeToken(signed);
