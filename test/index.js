@@ -240,7 +240,7 @@ describe('Config', () => {
 		});
 
 		it('should not memoize falsy values', () => {
-			expect(getExternalToken().token).to.equal(undefined);
+			expect(getExternalToken()).to.not.have.property('token');
 			process.env.BITCLOCK_TOKEN = testToken;
 			expect(getExternalToken().token).to.equal(testToken);
 		});
