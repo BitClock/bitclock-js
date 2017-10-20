@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 
 import { ensureIndex, Config, Transaction, Waterfall } from '../lib/index';
 import { stack as requestStack } from '../lib/event-queue';
+import { getExternalToken } from '../lib/config';
 import * as auth from '../lib/auth';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
@@ -188,22 +189,61 @@ describe('Config', () => {
 		Config({ debug: false, silent: false });
 	});
 
-	it('should reset the getToken helper if opts.token exists', () => {
-		const envToken = process.env.BITCLOCK_TOKEN;
-		expect(auth.getToken()).to.equal(Config().token);
-		process.env.BITCLOCK_TOKEN = undefined;
-		try {
-			expect(auth.getToken()).to.equal(Config().token);
-			Config({ token: null });
-			expect(auth.getToken()).to.equal(undefined);
+	describe('getExternalToken', () => {
+		let document;
+		let configToken;
+		let envToken;
+		let cookieString;
+		let testToken;
+		let testCookieString;
+
+		before(() => {
+			({ document } = _.defaults(global, { document: {} }));
+			configToken = Config().token;
+			envToken = process.env.BITCLOCK_TOKEN;
+			cookieString = document.cookie;
+		});
+
+		beforeEach(() => {
+			testToken = randomBytes(40).toString('hex');
+			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
+			process.env.BITCLOCK_TOKEN = undefined;
+			getExternalToken.reset();
+			Config.reset();
+		});
+
+		afterEach(() => {
+			Config({ token: configToken });
 			process.env.BITCLOCK_TOKEN = envToken;
-			expect(auth.getToken()).to.equal(envToken);
-		} catch (err) {
-			throw err;
-		} finally {
-			process.env.BITCLOCK_TOKEN = envToken;
-			Config({ token: testConfig.token });
-		}
+			document.cookie = cookieString;
+		});
+
+		after(() => {
+			delete global.document;
+		});
+
+		it('should get the token from process.env', () => {
+			process.env.BITCLOCK_TOKEN = testToken;
+			expect(getExternalToken().token).to.equal(testToken);
+		});
+
+		it('should get the token from document.cookie', () => {
+			process.browser = true;
+			document.cookie = testCookieString;
+			try {
+				expect(getExternalToken().token).to.equal(testToken);
+			} catch (err) {
+				throw err;
+			} finally {
+				delete process.browser;
+			}
+		});
+
+		it('should not memoize falsy values', () => {
+			expect(getExternalToken().token).to.equal(undefined);
+			process.env.BITCLOCK_TOKEN = testToken;
+			expect(getExternalToken().token).to.equal(testToken);
+		});
 	});
 
 	describe('reset', () => {
@@ -697,67 +737,6 @@ describe('Stack', () => {
 });
 
 describe('auth', () => {
-	describe('getToken', () => {
-		let document;
-		let configToken;
-		let envToken;
-		let cookieString;
-		let testToken;
-		let testCookieString;
-
-		before(() => {
-			({ document } = _.defaults(global, { document: {} }));
-			configToken = Config().token;
-			envToken = process.env.BITCLOCK_TOKEN;
-			cookieString = document.cookie;
-		});
-
-		beforeEach(() => {
-			testToken = randomBytes(40).toString('hex');
-			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
-			process.env.BITCLOCK_TOKEN = undefined;
-			Config({ token: undefined });
-		});
-
-		afterEach(() => {
-			Config({ token: configToken });
-			process.env.BITCLOCK_TOKEN = envToken;
-			document.cookie = cookieString;
-		});
-
-		after(() => {
-			delete global.document;
-		});
-
-		it('should get the token from config', () => {
-			Config({ token: testToken });
-			expect(auth.getToken()).to.equal(testToken);
-		});
-
-		it('should get the token from process.env', () => {
-			process.env.BITCLOCK_TOKEN = testToken;
-			expect(auth.getToken()).to.equal(testToken);
-		});
-
-		it('should get the token from document.cookie', () => {
-			process.browser = true;
-			document.cookie = testCookieString;
-			try {
-				expect(auth.getToken()).to.equal(testToken);
-			} catch (err) {
-				throw err;
-			} finally {
-				delete process.browser;
-			}
-		});
-
-		it('should not cache falsy values', () => {
-			expect(auth.getToken()).to.equal(undefined);
-			process.env.BITCLOCK_TOKEN = testToken;
-			expect(auth.getToken()).to.equal(testToken);
-		});
-	});
-
 	describe('signToken', () => {
 		it('should sign a token', () => {
 			const { token } = Config();
