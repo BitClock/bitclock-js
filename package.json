@@ -19,9 +19,9 @@
   "module": "dist/module",
   "browser": "dist/bitclock",
   "scripts": {
-    "build": "npm run build:package && npm run build:browser && npm run build:lib && npm run build:main && npm run build:module",
+    "build": "npm run build:package && npm run build:browser && npm run build:bundle && npm run build:main && npm run build:module",
     "build:browser": "npm run webpack -- --config ./webpack/config.browser.babel.js",
-    "build:lib": "npm run webpack -- --config ./webpack/config.lib.babel.js",
+    "build:bundle": "npm run webpack -- --config ./webpack/config.bundle.babel.js",
     "build:main": "BABEL_PLATFORM=node babel lib --out-dir dist/main --source-maps inline",
     "build:module": "BABEL_PLATFORM=browser babel lib --out-dir dist/module --source-maps inline",
     "build:package": "mkdirp dist && node_modules/node-jq/bin/jq -rMc '{name: .name, version: .version}' package.json > dist/package.json",
@@ -41,8 +41,8 @@
   },
   "pre-commit": "lint:staged",
   "dependencies": {
-    "babel-runtime": "^6.26.0",
     "cookie": "^0.3.1",
+    "es6-promise": "^4.1.1",
     "isomorphic-fetch": "^2.2.1",
     "uuid": "^3.0.1"
   },
@@ -53,7 +53,6 @@
     "babel-plugin-istanbul": "^4.1.4",
     "babel-plugin-transform-export-extensions": "^6.8.0",
     "babel-plugin-transform-object-rest-spread": "^6.8.0",
-    "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-env": "^1.6.0",
     "babel-preset-platform": "^1.0.0-alpha.2",
     "babel-register": "^6.24.1",

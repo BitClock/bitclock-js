@@ -15,14 +15,16 @@ export default extendBaseConfig({
 	},
 	externals: [
 		'process',
-		nodeExternals({
-			whitelist: [
-				'isomorphic-fetch',
-				'whatwg-fetch'
-			]
-		})
+		nodeExternals()
 	],
 	plugins: [
 		new ProvidePlugin({ process: 'process' })
-	]
+	],
+	module: {
+		loaders: [{
+			test: /\.js$/,
+			use: 'babel-loader',
+			exclude: /node_modules/
+		}]
+	}
 });

@@ -5,7 +5,7 @@ import pkg from '../package.json';
 
 const banner = `${pkg.name} - ${pkg.version} - ${new Date().toISOString()}`;
 
-export default ({ output = {}, plugins = [], ...other }) => ({
+export default ({ output = {}, plugins = [], module: { loaders = [] }, ...other }) => ({
 	context: path.resolve(__dirname, '..'),
 	output: {
 		path: path.resolve(__dirname, '../dist'),
@@ -30,14 +30,7 @@ export default ({ output = {}, plugins = [], ...other }) => ({
 		new BannerPlugin({ banner, entryOnly: true })
 	],
 	module: {
-		loaders: [{
-			test: /\.js$/,
-			use: 'babel-loader',
-			exclude: {
-				test: /node_modules/,
-				not: [/whatwg-fetch/]
-			}
-		}, {
+		loaders: [...loaders, {
 			test: /\.json$/,
 			use: 'json-loader'
 		}]

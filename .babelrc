@@ -25,7 +25,6 @@
 		}]
 	],
 	plugins: [
-		'transform-runtime',
 		'transform-object-rest-spread',
 		'transform-export-extensions'
 	],
