@@ -14,7 +14,6 @@ import { ensureIndex, Config, Transaction, Waterfall } from '../lib/index';
 import { stack as requestStack } from '../lib/event-queue';
 import { getExternalToken } from '../lib/config';
 import { MockWeakSet } from '../lib/builtins/weak-set';
-import * as auth from '../lib/auth';
 import * as helpers from '../lib/helpers';
 import Stack from '../lib/stack';
 
@@ -37,13 +36,17 @@ function getPendingEvents() {
 }
 
 function createMockServer() {
-	const {
-		reportingEndpoint,
-		reportingAPIVersion,
-		bucket,
-		token
-	} = testConfig;
+	const { bucket, reportingEndpoint, reportingAPIVersion } = testConfig;
+	const token = Config.getToken('private');
 	const events = [];
+
+	function checkToken(req) {
+		const { authorization: [authorization] } = req.headers;
+		return authorization.indexOf(token) === -1
+			? new Error('Missing token')
+			: null;
+	}
+
 	return nock(reportingEndpoint)
 		.persist()
 		.post(`/${reportingAPIVersion}/bucket/null/event`)
@@ -55,22 +58,19 @@ function createMockServer() {
 		})
 		.post(`/${reportingAPIVersion}/bucket/${bucket}/event`)
 		.reply(function(uri, { events: chunk }, cb) {
-			const { authorization: [authorization] } = this.req.headers;
-			if (authorization.indexOf(token) === -1) {
-				failWith(new Error('Missing token'));
-			} else {
+			const err = checkToken(this.req);
+			if (!err) {
 				events.push(...chunk);
-				cb(null, [200, { chunk, total: events.length }]);
 			}
+			cb(err, [200, { chunk, total: events.length }]);
 		})
 		.post(`/${reportingAPIVersion}/bucket/${bucket}/index`)
 		.reply(function(uri, body, cb) {
-			const { authorization: [authorization] } = this.req.headers;
-			if (authorization.indexOf(token) === -1) {
-				failWith(new Error('Missing token'));
-			} else {
-				cb(null, [200, body]);
-			}
+			cb(checkToken(this.req), [200, body]);
+		})
+		.post(`/${reportingAPIVersion}/bucket/${bucket}/token/sign`)
+		.reply(function(uri, body, cb) {
+			cb(checkToken(this.req), [200, { token: helpers.base64Encode(JSON.stringify(body)) }]);
 		})
 		.get('/events')
 		.reply((uri, body, cb) => {
@@ -198,41 +198,99 @@ describe('Config', () => {
 		let testToken;
 		let testCookieString;
 
-		before(() => {
-			({ document } = _.defaults(global, { document: {} }));
-			configToken = Config().token;
-			envToken = process.env.BITCLOCK_TOKEN;
-			cookieString = document.cookie;
-		});
+		['single', 'multi'].forEach((variant) => {
+			describe(variant, () => {
+				function getExpectedTestToken() {
+					return variant === 'single' ? testToken : JSON.parse(testToken);
+				}
 
-		beforeEach(() => {
-			testToken = randomBytes(40).toString('hex');
-			testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
-			process.env.BITCLOCK_TOKEN = undefined;
-			getExternalToken.reset();
+				before(() => {
+					({ document } = _.defaults(global, { document: {} }));
+					configToken = Config().token;
+					envToken = process.env.BITCLOCK_TOKEN;
+					cookieString = document.cookie;
+				});
+
+				beforeEach(() => {
+					if (variant === 'single') {
+						testToken = randomBytes(40).toString('hex');
+					} else {
+						testToken = JSON.stringify({
+							private: randomBytes(40).toString('hex'),
+							public: randomBytes(40).toString('hex')
+						});
+					}
+					testCookieString = `_test1=2.1494212681.1494212681; BITCLOCK_TOKEN=${testToken}; _test2=2.1494212681.1494212681;`;
+					process.env.BITCLOCK_TOKEN = undefined;
+					getExternalToken.reset();
+					Config.reset();
+				});
+
+				afterEach(() => {
+					Config({ token: configToken });
+					process.env.BITCLOCK_TOKEN = envToken;
+					document.cookie = cookieString;
+				});
+
+				after(() => {
+					delete global.document;
+				});
+
+				it('should get the token from process.env', () => {
+					process.env.BITCLOCK_TOKEN = testToken;
+					expect(getExternalToken().token).to.deep.equal(getExpectedTestToken());
+				});
+
+				it('should get the token from document.cookie', () => {
+					process.browser = true;
+					document.cookie = testCookieString;
+					try {
+						expect(getExternalToken().token).to.deep.equal(getExpectedTestToken());
+					} catch (err) {
+						throw err;
+					} finally {
+						delete process.browser;
+					}
+				});
+
+				it('should not memoize falsy values', () => {
+					expect(getExternalToken()).to.not.have.property('token');
+					process.env.BITCLOCK_TOKEN = testToken;
+					expect(getExternalToken().token).to.deep.equal(getExpectedTestToken());
+				});
+			});
+		});
+	});
+
+	describe('getToken', () => {
+		const { BITCLOCK_TOKEN } = process.env;
+
+		before(() => {
+			delete process.env.BITCLOCK_TOKEN;
 			Config.reset();
 		});
 
-		afterEach(() => {
-			Config({ token: configToken });
-			process.env.BITCLOCK_TOKEN = envToken;
-			document.cookie = cookieString;
-		});
-
 		after(() => {
-			delete global.document;
+			delete process.browser;
+			Object.assign(process.env, { BITCLOCK_TOKEN });
 		});
 
-		it('should get the token from process.env', () => {
-			process.env.BITCLOCK_TOKEN = testToken;
-			expect(getExternalToken().token).to.equal(testToken);
+		it('should handle handle a string value', () => {
+			const token = randomBytes(40).toString('hex');
+			Config({ token });
+			expect(Config.getToken()).to.equal(token);
 		});
 
-		it('should get the token from document.cookie', () => {
+		it('should handle handle an object value based on process.browser', () => {
+			const token = {
+				public: randomBytes(40).toString('hex'),
+				private: randomBytes(40).toString('hex')
+			};
+			Config({ token });
+			expect(Config.getToken()).to.equal(token.private);
 			process.browser = true;
-			document.cookie = testCookieString;
 			try {
-				expect(getExternalToken().token).to.equal(testToken);
+				expect(Config.getToken()).to.equal(token.public);
 			} catch (err) {
 				throw err;
 			} finally {
@@ -240,10 +298,14 @@ describe('Config', () => {
 			}
 		});
 
-		it('should not memoize falsy values', () => {
-			expect(getExternalToken()).to.not.have.property('token');
-			process.env.BITCLOCK_TOKEN = testToken;
-			expect(getExternalToken().token).to.equal(testToken);
+		it('should accept a forceType argument', () => {
+			const token = {
+				public: randomBytes(40).toString('hex'),
+				private: randomBytes(40).toString('hex')
+			};
+			Config({ token });
+			expect(Config.getToken('public')).to.equal(token.public);
+			expect(Config.getToken('private')).to.equal(token.private);
 		});
 	});
 
@@ -266,13 +328,21 @@ describe('Config', () => {
 		it('should serialize changes to the event store as an encoded string', () => {
 			// eslint-disable-next-line no-unused-vars
 			const { token, ...other } = mockDeserialize(Config.serialize());
-			expect(other).to.deep.equal({});
+			expect(other).to.deep.equal({
+				env: process.env.NODE_ENV
+			});
 		});
 
-		it('should generate a signed token by default', () => {
+		it('should serialize only the public token by default', () => {
 			const { token } = mockDeserialize(Config.serialize());
-			expect(token).to.not.equal(Config().token);
-			expect(token.startsWith(auth.preamble)).to.equal(true);
+			expect(token).to.equal(Config.getToken('public'));
+		});
+
+		it('should omit certain fields from the serialized output', () => {
+			const omitted = { extends: '/secrets/.bitclockrc', indices: { foo: ['bar'] } };
+			Config(omitted);
+			const result = mockDeserialize(Config.serialize());
+			expect(result).to.not.include(omitted);
 		});
 
 		it('should optionally serialize the entire config store', () => {
@@ -771,45 +841,5 @@ describe('Stack', () => {
 		}
 
 		expect(stack.flush(chunkSize)).to.have.length(0);
-	});
-});
-
-describe('auth', () => {
-	describe('signToken', () => {
-		it('should sign a token', () => {
-			const { token } = Config();
-			const signed = auth.signToken(token);
-			expect(signed.startsWith(auth.preamble)).to.equal(true);
-		});
-
-		it('should log a warning given an invalid token', () => {
-			expect(interceptError(() => auth.signToken(null))).to.throw(/warning/i);
-			expect(interceptError(() => auth.signToken('asdf'))).to.throw(/warning/i);
-			expect(interceptError(() => auth.signToken(randomBytes(80).toString('binary')))).to.throw(/warning/i);
-		});
-	});
-
-	describe('parseToken', () => {
-		it('should parse a token', () => {
-			const { token } = Config();
-			const [fingerprint, secret] = auth.parseToken(token);
-			expect(`${fingerprint}${secret}`).to.equal(token);
-		});
-
-		it('should return an empty array if parsing fails', () => {
-			expect(auth.parseToken()).to.deep.equal([]);
-		});
-	});
-
-	describe('decodeToken', () => {
-		it('should decode a signed token', () => {
-			const { token } = Config();
-			const signed = auth.signToken(token);
-			const [fp, secret] = auth.parseToken(token);
-			const { fingerprint, salt, timestamp, proof } = auth.decodeToken(signed);
-			expect(fingerprint).to.equal(fp);
-			expect(isISO8601(timestamp)).to.equal(true);
-			expect(proof).to.equal(auth.getProof(secret, salt, timestamp));
-		});
 	});
 });
